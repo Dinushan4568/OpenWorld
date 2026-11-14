@@ -12,6 +12,7 @@ import {
   createLocomotionState,
   stepLocomotion,
   type LocomotionState,
+  type LocomotionTuning,
   type LocomotionWorld,
   type MoveCommand,
   type StepEvents,
@@ -67,6 +68,7 @@ export class PlayerController extends Emitter<PlayerEvents> {
   private readonly app: AppBase;
   private stepDistance = 0;
   private wasWading = false;
+  private readonly tuning: LocomotionTuning;
 
   constructor(
     app: AppBase,
@@ -77,6 +79,7 @@ export class PlayerController extends Emitter<PlayerEvents> {
     super();
     this.app = app;
     this.collision = collision ?? null;
+    this.tuning = { ...DEFAULT_TUNING };
     this.world = createLocomotionWorld(collision);
     this.model = new CharacterModel(app, assets);
     this.root = this.model.root;
@@ -128,6 +131,23 @@ export class PlayerController extends Emitter<PlayerEvents> {
     return this.state.landing;
   }
 
+  /**
+   * Apply RPG movement modifiers without ever mutating the shared
+   * `DEFAULT_TUNING` module constant (it is used by headless solver tests).
+   */
+  applyProgressionMovement(modifiers: {
+    moveSpeed: number;
+    jump: number;
+    waterSpeed: number;
+    doubleJump: boolean;
+  }): void {
+    this.tuning.walkSpeed = PLAYER.walkSpeed * modifiers.moveSpeed;
+    this.tuning.runSpeed = PLAYER.runSpeed * modifiers.moveSpeed;
+    this.tuning.jumpVelocity = PLAYER.jumpVelocity * modifiers.jump;
+    this.tuning.waterSpeed = modifiers.waterSpeed;
+    this.tuning.airJumps = modifiers.doubleJump ? 1 : 0;
+  }
+
   /* ------------------------------------------------------------------ */
   /* Frame update                                                       */
   /* ------------------------------------------------------------------ */
@@ -143,7 +163,7 @@ export class PlayerController extends Emitter<PlayerEvents> {
       jump: command.jump,
     };
 
-    const events = stepLocomotion(this.state, solverCommand, dt, this.world, DEFAULT_TUNING);
+    const events = stepLocomotion(this.state, solverCommand, dt, this.world, this.tuning);
     this.handleEvents(events);
 
     const wadingChanged = this.state.wading !== this.wasWading;
@@ -163,7 +183,7 @@ export class PlayerController extends Emitter<PlayerEvents> {
       {
         landing: this.state.landing,
         turnRate: this.state.turnRate,
-        running: command.run && this.state.speed > PLAYER.walkSpeed * 1.05,
+        running: command.run && this.state.speed > this.tuning.walkSpeed * 1.05,
       },
     );
 
@@ -210,7 +230,8 @@ export class PlayerController extends Emitter<PlayerEvents> {
     this.state.velocity.z = 0;
     this.state.grounded = true;
     this.state.airTime = 0;
-    this.state.coyote = PLAYER.coyoteTime;
+    this.state.coyote = this.tuning.coyoteTime;
+    this.state.airJumpsUsed = 0;
     this.state.landing = 0;
     this.state.heading = heading;
     this.stepDistance = 0;

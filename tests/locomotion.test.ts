@@ -245,3 +245,46 @@ describe('locomotion solver', () => {
 
 const DEFAULT = DEFAULT_TUNING;
 const PLAYER_LIMIT = DEFAULT.walkSpeed * 0.55;
+
+describe('locomotion progression modifiers', () => {
+  it('supports one unlockable mid-air jump without changing the default tuning', () => {
+    const tuning = { ...DEFAULT_TUNING, airJumps: 1 };
+    const world = makeWorld();
+    const state = createLocomotionState(0, 0, 0, 0);
+    const command = { forward: 0, strafe: 0, yaw: 0, run: false, jump: true };
+    stepLocomotion(state, command, 1 / 60, world, tuning);
+    expect(state.velocity.y).toBeGreaterThan(0);
+    for (let i = 0; i < 12; i += 1) {
+      stepLocomotion(state, { ...command, jump: false }, 1 / 60, world, tuning);
+    }
+    expect(state.grounded).toBe(false);
+    const before = state.velocity.y;
+    const events = stepLocomotion(state, command, 1 / 60, world, tuning);
+    expect(events.jumped).toBe(true);
+    expect(state.velocity.y).toBeGreaterThan(before);
+    expect(state.airJumpsUsed).toBe(1);
+    // A third press does not grant another jump.
+    stepLocomotion(state, { ...command, jump: false }, 1 / 60, world, tuning);
+    const third = stepLocomotion(state, command, 1 / 60, world, tuning);
+    expect(third.jumped).toBe(false);
+    expect(DEFAULT_TUNING.airJumps).toBeUndefined();
+  });
+
+  it('uses the water speed multiplier while wading', () => {
+    const shallow = createLocomotionState(0, 0, 0, 0);
+    const fast = createLocomotionState(0, 0, 0, 0);
+    const world = {
+      terrainHeight: () => -0.5,
+      groundHeight: () => -0.5,
+      normalY: () => 1,
+      waterLevel: 0,
+      boundaryRadius: 330,
+    };
+    const command = { forward: 1, strafe: 0, yaw: 0, run: false, jump: false };
+    for (let i = 0; i < 90; i += 1) {
+      stepLocomotion(shallow, command, 1 / 60, world, { ...DEFAULT_TUNING, waterSpeed: 1 });
+      stepLocomotion(fast, command, 1 / 60, world, { ...DEFAULT_TUNING, waterSpeed: 1.4 });
+    }
+    expect(fast.speed).toBeGreaterThan(shallow.speed + 0.2);
+  });
+});

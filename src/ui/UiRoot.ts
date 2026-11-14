@@ -11,7 +11,9 @@ import { FatalErrorScreen, type FatalErrorOptions } from './screens/FatalErrorSc
 import { DialogueScreen } from './screens/DialogueScreen';
 import { QuestLogScreen } from './screens/QuestLogScreen';
 import { PuzzleScreen } from './screens/PuzzleScreen';
+import { CharacterScreen } from './screens/CharacterScreen';
 import type { DialogueSession, DialogueView, JournalView, PuzzleDefinition } from '../game/story/types';
+import type { EquipmentSlot, ProgressionView } from '../game/progression/types';
 import { el } from './components/dom';
 
 export interface UiCallbacks {
@@ -24,9 +26,24 @@ export interface UiCallbacks {
   onPuzzleSolved?: (puzzle: PuzzleDefinition) => void;
   onPuzzleClose?: () => void;
   onJournalClose?: () => void;
+  onCharacterClose?: () => void;
+  onPauseCharacter?: () => void;
+  onUnlockSkill?: (id: string) => void;
+  onEquipItem?: (id: string) => void;
+  onUnequipItem?: (slot: EquipmentSlot) => void;
+  onUpgradeItem?: (id: string) => void;
+  onCraftItem?: (id: string) => void;
 }
 
-export type OverlayKind = 'settings' | 'credits' | 'pause' | 'dialogue' | 'questlog' | 'puzzle' | null;
+export type OverlayKind =
+  | 'settings'
+  | 'credits'
+  | 'pause'
+  | 'dialogue'
+  | 'questlog'
+  | 'puzzle'
+  | 'character'
+  | null;
 
 /** Owns every DOM surface above the canvas and the transitions between them. */
 export class UiRoot {
@@ -40,6 +57,7 @@ export class UiRoot {
   readonly dialogue: DialogueScreen;
   readonly questLog: QuestLogScreen;
   readonly puzzle: PuzzleScreen;
+  readonly character: CharacterScreen;
   private readonly atmosphere: HTMLElement;
   private readonly fade: HTMLElement;
   private readonly callbacks: UiCallbacks;
@@ -75,6 +93,9 @@ export class UiRoot {
       onResume: () => this.callbacks.onResume(),
       onSettings: () => this.showSettings('pause'),
       onQuit: () => this.callbacks.onQuit(),
+      onCharacter: this.callbacks.onPauseCharacter
+        ? () => this.callbacks.onPauseCharacter?.()
+        : undefined,
     });
     this.settings = new SettingsScreen(store, { onClose: () => this.closeSettings() });
     this.credits = new CreditsScreen({ onClose: () => this.closeCredits() });
@@ -88,6 +109,14 @@ export class UiRoot {
     this.puzzle = new PuzzleScreen({
       onSolved: (puzzle) => this.callbacks.onPuzzleSolved?.(puzzle),
       onClose: () => this.callbacks.onPuzzleClose?.(),
+    });
+    this.character = new CharacterScreen({
+      onClose: () => this.callbacks.onCharacterClose?.(),
+      onUnlockSkill: (id) => this.callbacks.onUnlockSkill?.(id),
+      onEquip: (id) => this.callbacks.onEquipItem?.(id),
+      onUnequip: (slot) => this.callbacks.onUnequipItem?.(slot),
+      onUpgrade: (id) => this.callbacks.onUpgradeItem?.(id),
+      onCraft: (id) => this.callbacks.onCraftItem?.(id),
     });
 
     this.fade = el('div', { class: 'ui-fade', attrs: { 'aria-hidden': 'true' } });
@@ -104,6 +133,7 @@ export class UiRoot {
       this.dialogue.root,
       this.questLog.root,
       this.puzzle.root,
+      this.character.root,
       this.fade,
     );
 
@@ -162,7 +192,8 @@ export class UiRoot {
     this.dialogue.hide();
     this.questLog.hide();
     this.puzzle.hide();
-    if (this.overlay === 'dialogue' || this.overlay === 'questlog' || this.overlay === 'puzzle') {
+    this.character.hide();
+    if (this.overlay === 'dialogue' || this.overlay === 'questlog' || this.overlay === 'puzzle' || this.overlay === 'character') {
       this.overlay = null;
     }
     document.body.classList.add('is-menu');
@@ -261,12 +292,13 @@ export class UiRoot {
       this.overlay === 'credits' ||
       this.overlay === 'dialogue' ||
       this.overlay === 'questlog' ||
-      this.overlay === 'puzzle'
+      this.overlay === 'puzzle' ||
+      this.overlay === 'character'
     );
   }
 
   get hasStoryOverlay(): boolean {
-    return this.dialogue.isActive || this.questLog.isActive || this.puzzle.isActive;
+    return this.dialogue.isActive || this.questLog.isActive || this.puzzle.isActive || this.character.isActive;
   }
 
   closeTransientOverlay(): boolean {
@@ -288,6 +320,10 @@ export class UiRoot {
     }
     if (this.overlay === 'puzzle') {
       this.callbacks.onPuzzleClose?.();
+      return true;
+    }
+    if (this.overlay === 'character') {
+      this.callbacks.onCharacterClose?.();
       return true;
     }
     return false;
@@ -336,6 +372,33 @@ export class UiRoot {
   }
 
   /* ---------------------------------------------------------------- */
+  /* Character and progression                                        */
+  /* ---------------------------------------------------------------- */
+
+  showCharacter(view: ProgressionView): void {
+    this.character.showCharacter(view);
+    this.overlay = 'character';
+  }
+
+  refreshCharacter(view: ProgressionView): void {
+    this.character.refresh(view);
+  }
+
+  characterFeedback(text: string, ok: boolean): void {
+    this.character.feedback(text, ok);
+  }
+
+  hideCharacter(): void {
+    this.character.hide();
+    this.character.root.classList.remove('is-active');
+    if (this.overlay === 'character') this.overlay = null;
+  }
+
+  get characterOpen(): boolean {
+    return this.character.isActive;
+  }
+
+  /* ---------------------------------------------------------------- */
   /* Feedback                                                         */
   /* ---------------------------------------------------------------- */
 
@@ -374,6 +437,7 @@ export class UiRoot {
     this.dialogue.hide();
     this.questLog.hide();
     this.puzzle.hide();
+    this.character.hide();
   }
 
   clearFatal(): void {
@@ -387,6 +451,7 @@ export class UiRoot {
     this.dialogue.destroy();
     this.questLog.destroy();
     this.puzzle.destroy();
+    this.character.destroy();
     this.fatal?.destroy();
   }
 }

@@ -8,6 +8,7 @@ export interface InputCallbacks {
   onScan: () => void;
   onInteract?: () => void;
   onJournal?: () => void;
+  onCharacter?: () => void;
   onToggleFps: () => void;
   onToggleMute: () => void;
   onPointerLockLost: () => void;
@@ -101,6 +102,9 @@ export class InputManager {
     }
     if (event.code === 'KeyJ' && !event.repeat) {
       this.callbacks.onJournal?.();
+    }
+    if ((event.code === 'KeyC' || event.code === 'KeyK') && !event.repeat) {
+      this.callbacks.onCharacter?.();
     }
     if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(event.code)) {
       event.preventDefault();

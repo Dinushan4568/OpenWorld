@@ -35,6 +35,8 @@ export interface LocomotionState {
   /** Yaw rate in rad/s, used for leaning. */
   turnRate: number;
   boundaryCooldown: number;
+  /** Extra jumps used since the last grounding (Vault Step). */
+  airJumpsUsed: number;
 }
 
 export interface MoveCommand {
@@ -62,6 +64,10 @@ export interface LocomotionTuning {
   maxFallSpeed: number;
   groundLambda: number;
   airLambda: number;
+  /** Optional unlockable mid-air jump count (Vault Step grants one). */
+  airJumps?: number;
+  /** Optional water movement multiplier from skills and gear. */
+  waterSpeed?: number;
 }
 
 export const DEFAULT_TUNING: LocomotionTuning = {
@@ -120,6 +126,7 @@ export function createLocomotionState(x: number, z: number, heading: number, gro
     landing: 0,
     turnRate: 0,
     boundaryCooldown: 0,
+    airJumpsUsed: 0,
   };
 }
 
@@ -166,7 +173,8 @@ export function stepLocomotion(
   state.wading = depth > 0.05;
   const deep = depth > 1.05;
   const waterDrag = state.wading ? (deep ? 0.42 : 0.74) : 1;
-  const maxSpeed = (command.run ? tuning.runSpeed : tuning.walkSpeed) * waterDrag;
+  const swimScale = state.wading ? tuning.waterSpeed ?? 1 : 1;
+  const maxSpeed = (command.run ? tuning.runSpeed : tuning.walkSpeed) * waterDrag * swimScale;
 
   /* Accel / braking ---------------------------------------------------------- */
   const targetX = hasInput ? wishX * maxSpeed : 0;
@@ -176,12 +184,21 @@ export function stepLocomotion(
   state.velocity.z = damp(state.velocity.z, targetZ, lambda, dt);
 
   /* Jump --------------------------------------------------------------------- */
+  const airJumps = Math.max(0, tuning.airJumps ?? 0);
   if (state.jumpBuffer > 0 && state.coyote > 0) {
     state.velocity.y = tuning.jumpVelocity;
     state.grounded = false;
     state.coyote = 0;
     state.jumpBuffer = 0;
     state.airTime = 0;
+    state.airJumpsUsed = 0;
+    events.jumped = true;
+  } else if (state.jumpBuffer > 0 && airJumps > 0 && state.airJumpsUsed < airJumps) {
+    // Vault Step: a slightly weaker second jump, refreshed only on landing.
+    state.velocity.y = tuning.jumpVelocity * 0.92;
+    state.grounded = false;
+    state.jumpBuffer = 0;
+    state.airJumpsUsed += 1;
     events.jumped = true;
   }
 
@@ -272,6 +289,7 @@ export function stepLocomotion(
     state.position.y = floor;
     state.velocity.y = 0;
     state.grounded = true;
+    state.airJumpsUsed = 0;
   } else if (state.grounded && state.velocity.y <= 0 && state.position.y - floor <= STEP_DOWN) {
     // Walk down slopes and small steps without bouncing into the air. Anything
     // taller than STEP_DOWN turns into a real fall instead of a vertical snap.
@@ -279,6 +297,7 @@ export function stepLocomotion(
     state.position.y = floor;
     state.velocity.y = 0;
     state.grounded = true;
+    state.airJumpsUsed = 0;
   } else {
     state.grounded = false;
   }
@@ -288,6 +307,7 @@ export function stepLocomotion(
     state.position.y = floor;
     state.velocity.y = Math.max(0, state.velocity.y);
     state.grounded = true;
+    state.airJumpsUsed = 0;
   }
 
   /* Derived state ------------------------------------------------------------ */

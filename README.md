@@ -12,7 +12,9 @@ with their own bodies, patrols, personalities, scannable weaknesses and cinemati
 Phase 05 adds the story layer: an original Chapter One with three main missions, three side missions,
 two ancient-technology puzzles, three characters, branching dialogue, a mission journal, a codex of
 recovered memories and two endings. Mission progress is saved locally and every mission is playable
-from the world, not just described in data.
+from the world, not just described in data. Phase 06 adds the field record: a complete RPG
+progression layer with experience and levels, a five-discipline skill tree, nine exploration
+abilities, resources, equipment upgrades, crafting, a character sheet and validated IndexedDB saves.
 
 Everything is original work. The project is inspired by the *feeling* of exploring a vast, overgrown
 world — it does not use, copy or reproduce any copyrighted characters, assets, environments, stories
@@ -35,7 +37,7 @@ The dev server binds `0.0.0.0` so it also works behind the sandbox preview proxy
 ```bash
 npm run build        # typecheck + production bundle into dist/
 npm run preview      # serve the production bundle
-npm test             # 145 unit/DOM/integration tests (Vitest)
+npm test             # 182 unit/DOM/integration tests (Vitest)
 npm run typecheck    # tsc --noEmit
 npm run assets       # regenerate the GLB prop library + the Wayfarer character
 ```
@@ -437,7 +439,7 @@ character's motion is synthesised in TypeScript rather than baked into animation
 
 ## Testing
 
-`npm test` runs 145 tests across twenty-three suites:
+`npm test` runs 182 tests across twenty-six suites:
 
 - `math` / `heightfield` / `settings` / `assets` / `ui` / `boot` — the Phase 01 coverage: damping and
   angle maths, deterministic terrain, settings/progress sanitisation, glTF validity and manifests,
@@ -488,6 +490,15 @@ character's motion is synthesised in TypeScript rather than baked into animation
   real objects, and walks every side objective, character and memorial.
 - `story-ui` — dialogue rendering and keyboard/number responses, both puzzle dial states and the
   single-fire solve callback, and the journal's missions, objectives, rewards and archive.
+- `progression` — XP, levelups, cap, skill prerequisites, point budgeting, ability unlocks, derived
+  stats, resource yield, scan samples, node one-shots, equip/upgrade/craft, discounts, IndexedDB
+  round-trip, reset and corrupt-save repair.
+- `progression-ui` — all five character-sheet tabs, Learn/Upgrade/Equip/Unequip/Craft callbacks,
+  close paths and the HUD level/stamina readouts.
+- `resource-nodes` — all twenty caches build grounded, nearest interaction, gather hiding and the
+  survey-marker state.
+- `locomotion` progression — Vault Step's mid-air jump and the water-speed multiplier; the shared
+  `DEFAULT_TUNING` constant is never mutated.
 
 Additional verification performed: `tsc --noEmit` (clean), `vite build` (clean), and dev-server
 `curl` checks for `/`, `/src/main.ts`, `/favicon.svg`, `/assets/models/manifest.json`, the prop GLBs
@@ -518,7 +529,128 @@ Run the dev server, open the game, then visit `/?range=1`:
 
 ---
 
-## Known limits (Phase 05)
+## What Phase 06 adds — the Field Record
+
+The expedition now has a persistent character progression layer. Everything below is playable from
+the world and survives a reload.
+
+### Ten connected systems
+
+1. **Player XP** — awarded for shards, first scans, missions, puzzles, gathered resources, recovered
+   memories, both endings, equipment upgrades and crafting. Every source runs through one multiplier
+   (`xpBonus`) so utility gear genuinely accelerates the character.
+2. **Character levels** — levels 1–20. Each level grants 2 skill points. The XP curve is
+   `100 + (level − 1) × 60`; level 20 is the cap and the HUD switches to a cap state.
+3. **Skill tree** — 15 skills in five disciplines, each with three tiers and ranks. Tier 2 requires
+   rank 1 of its foundation; tier 3 requires rank 2 of the tier below. Ranks cost skill points and
+   apply immediately to derived stats.
+4. **Exploration abilities** — nine unlockable abilities granted at specific ranks:
+   Survey Instinct, Wayfinder, Cache Sense, Vault Step (double jump), Water Stride, Scan Sample,
+   Overclock, Field Medic and Salvage Eye. Each one is wired into gameplay rather than being a label.
+5. **Inventory** — resources, armoury equipment, active loadout and known field blueprints share one
+   character sheet with the expedition record.
+6. **Collectible resources** — 20 authored cache nodes around the valley produce echo-glass,
+   ferro-scrap, bio-fibre, lattice-fragment and storm-salt. Nodes are one-shot, animate in the world,
+   appear on the compass with Survey Instinct and yield more with Cache Sense.
+7. **Equipment management** — four slots (tool, suit, pack rig, scanner). Eight items exist: four
+   starter items and four tier-two items. Equipment contributes base stats plus per-level stats.
+8. **Equipment upgrades** — every item upgrades through three levels with escalating resource costs.
+   Salvage Eye and Salvage Master discount those costs; each upgrade refunds XP.
+9. **Player statistics** — distance travelled, time in the valley, shards, scans, missions, puzzles,
+   resources, memories, upgrades, skill ranks and total XP. The character sheet exposes the full
+   record plus category mastery.
+10. **Save/load progression** — a single versioned profile in IndexedDB (`echoes-progression`),
+    debounced after every change and flushed on pause, quit, visibility loss and page unload. Every
+    load is validated and repaired; corrupt levels, skills, equipment, resources and counters cannot
+    crash the game or grant impossible items.
+
+### The five disciplines
+
+| Discipline | Tier 1 | Tier 2 | Tier 3 |
+| --- | --- | --- | --- |
+| Exploration | Field Survey (+yield, Survey Instinct) | Ruin Lore (+XP, Cache Sense) | Wayfinder (+movement, Wayfinder) |
+| Movement | Trailcraft (+movement) | Vaulting (+jump, Vault Step) | Endurance (+stamina) |
+| Scanning | Optic Tuning (+scan range) | Field Analysis (+XP, Scan Sample) | Catalogue (+yield) |
+| Survival | Hardy (+stamina) | Watercraft (+water speed, Water Stride) | Field Medicine (+regen, Field Medic) |
+| Technology | Capacitor (−pulse cooldown, Overclock) | Lattice Decipher (+XP, Salvage Eye) | Salvage Master (+upgrade discount) |
+
+### The character sheet
+
+Press **C** (or **K**) during an expedition, or choose **Field record** on the pause screen. The
+five tabs are **Overview**, **Skills**, **Inventory**, **Equipment** and **Statistics**:
+
+- Overview: level, XP bar, all eleven live attributes, current loadout, ability collection.
+- Skills: category sections, rank pips, prerequisites, effects, ability unlocks and live
+  Learn/Upgrade/Locked buttons. Buttons disable exactly when the cost or prerequisite is unmet.
+- Inventory: resource cards, recipe cards, level requirements and a working Craft button.
+- Equipment: loadout slots with Unequip, owned gear with Equip, upgrade level/cost/next stats and a
+  working Upgrade button, plus the field crafting bench.
+- Statistics: the expedition record, attribute provenance and category mastery bars.
+
+The HUD adds a level badge, XP bar, unspent skill-point cue and stamina bar. Sprinting drains
+stamina; survival skills raise the pool and regeneration. The compass uses a distinct marker for
+resource caches and Wayfinder expands the survey from one to three nearby cache signals.
+
+### Persistence and validation
+
+The profile is a plain serialisable `ProgressionProfile` written to IndexedDB through an injectable
+`ProgressionPersistence` interface. `validateProfile` is applied to every read:
+
+- levels and XP clamp to the legal range; skill-point spending is capped by level;
+- unknown or prerequisite-invalid skills are removed before stats are derived;
+- equipment, equipped slots and resources are checked against authored content;
+- gathered nodes, scanned species, puzzles, shards, missions, memories and endings are filtered to
+  known IDs and de-duplicated;
+- every statistic is a bounded finite number; malformed records become a clean starter profile.
+
+A fresh expedition clears the IndexedDB record together with shards and Chapter One. Continuing
+imports previous Chapter One progress (shards, completed missions, solved puzzles, memories and the
+ending) into the field record exactly once, so upgrading an existing save does not lose earned XP.
+
+### Phase 06 tests
+
+`progression` — XP, levelups, cap, skill prerequisites, point budgeting, ability unlocks, derived
+stats, resource yield, scan samples, node one-shotting, equipment equip/upgrade/craft, discount
+maths, IndexedDB round-trip, reset and corrupt-save repair. `progression-ui` — all five tabs,
+Learn/Upgrade/Equip/Unequip/Craft callbacks, close paths and HUD level/stamina readouts.
+`resource-nodes` — all 20 caches build grounded, nearest interaction, gather hiding and survey state.
+`locomotion` — Vault Step air jump and water-speed modifiers. The full suite is **182 tests across
+26 files**.
+
+### Phase 06 manual checklist
+
+1. Start an expedition, press `C`; the sheet opens with level 1, 2 skill points and four equipped
+   starter items. Switch all five tabs and close with the button, backdrop or Escape.
+2. Spend points in Skills. Confirm the HUD skill-point cue clears and movement/scan/pulse numbers
+   change on Overview.
+3. Walk to a cache (for example near the Plaza) and press `R`; the crystal disappears, the resource
+   count rises and XP appears. Try the same cache again — it reports already gathered.
+4. Scan a machine with `F`; first scans grant XP. Unlock Field Analysis rank 2 and confirm a first
+   scan also deposits a sample resource.
+5. Unlock Vaulting rank 2 and press Space twice in the air; then test Watercraft in the lake.
+6. Gather materials, craft a tier-two item on the Inventory/Equipment bench, equip it and upgrade it.
+7. Open pause → Field record, then close back to pause. Reload the page and continue: level, skills,
+   resources, equipment, gathered nodes and statistics must all be present.
+8. Corrupt the browser's IndexedDB record (or use devtools) and reload: the game must start from a
+   validated profile and report that recovery happened instead of failing to boot.
+
+### Known limits (Phase 06)
+
+- Progression is local to this browser origin. There is no cloud sync, account or cross-device save.
+- Chapter One plus one full resource/equipment pass supports roughly levels 1–8. Level 20 and the
+  complete 15-skill tree are deliberate headroom for later chapters rather than being reachable in
+  this build.
+- Character progression is horizontal and exploration-focused: there is no combat levelling, loot
+  rarity, sockets, enchantments, talent respec or item durability.
+- All eight equipment items are hand-authored; crafting uses fixed recipes, not procedural rolls.
+- Resource nodes are one-shot per profile and do not respawn. Twenty nodes are enough for the full
+  upgrade/recipe economy, but a player who spends everything cannot farm more in the same profile.
+- Statistics are counters, not a telemetry system: no per-session charts, achievements or leaderboards.
+- The sheet is keyboard/pointer accessible with ARIA tabs and disabled-button reasons, but it has not
+  been audited against every screen reader.
+- The HUD indicates stamina and XP, but there is no separate health, hunger or temperature system.
+
+## Earlier-phase limits (Phase 01–05)
 
 - The character is an authored, low-poly, jointed figure (17.7k triangles) — a stylised expedition
   suit rather than a scanned actor. It is not skinned and has no baked clips: motion is procedural,
@@ -537,10 +669,10 @@ Run the dev server, open the game, then visit `/?range=1`:
 - Position is saved at most every eight seconds and on pause/quit, so a hard tab kill can lose a few
   metres of travel (shards are saved immediately).
 - No multiplayer, no cloud saves, no gamepad support; touch controls cover movement, look, run,
-  jump, pulse, scan and pause.
+  jump, pulse, scan, journal, field record and pause.
 - Streamed chunks are built on the main thread as the player crosses a boundary, so the first pass
   into a new region can hitch for a frame while props and colliders are created.
-- Chapter progress, settings and shard position are three separate local saves. Story NPCs and props
+- Chapter progress, settings, shard position and the field record are four separate local saves. Story NPCs and props
   are not streamed; all nineteen story objects and three characters stay resident for the session.
 - Creatures avoid solids and steep ground through local probing rather than pathfinding, so a very
   narrow gap or a perfectly walled-in patrol point may be skipped by the 18 s waypoint timeout. They
@@ -549,4 +681,4 @@ Run the dev server, open the game, then visit `/?range=1`:
 
 ---
 
-*Echoes of the Lost World — Phase 05 · v0.5.0*
+*Echoes of the Lost World — Phase 06 · v0.6.0*
