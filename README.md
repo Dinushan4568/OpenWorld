@@ -495,8 +495,8 @@ and `wayfarer.glb` (all `200`).
 
 A headless WebGL stack is unavailable in the build sandbox, so the final *visual* pass (lighting,
 post-processing, animation feel) must be confirmed in a real browser. The controller's logic, the
-character asset, the collision world and the camera's input mapping are covered headlessly; the live
-preview was used to confirm the app boots, serves and loads the new asset.
+character asset, the collision world and the camera's input mapping are covered headlessly; the
+running dev server was checked for the app shell, every source module and all GLB payloads (HTTP 200).
 
 ### Manual control checklist
 
