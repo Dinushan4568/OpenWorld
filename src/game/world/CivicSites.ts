@@ -47,12 +47,23 @@ export class CivicSites {
     this.root = new Entity('civic-sites');
     app.root.addChild(this.root);
 
+    // `owned` must exist before the factories run: `material()` registers each
+    // material here for disposal, and `this.materials` is not assigned yet.
+    const owned: StandardMaterial[] = [];
     this.materials = {
-      stone: this.material('site-stone', new Color(0.34, 0.33, 0.3), 0.05, 0.3),
-      metal: this.material('site-metal', new Color(0.2, 0.24, 0.25), 0.7, 0.42),
-      glow: this.material('site-glow', new Color(0.08, 0.32, 0.3), 0.2, 0.6, new Color(0.3, 1, 0.86), 1.6),
-      wood: this.material('site-wood', new Color(0.16, 0.12, 0.08), 0.04, 0.3),
-      owned: [],
+      stone: this.material(owned, 'site-stone', new Color(0.34, 0.33, 0.3), 0.05, 0.3),
+      metal: this.material(owned, 'site-metal', new Color(0.2, 0.24, 0.25), 0.7, 0.42),
+      glow: this.material(
+        owned,
+        'site-glow',
+        new Color(0.08, 0.32, 0.3),
+        0.2,
+        0.6,
+        new Color(0.3, 1, 0.86),
+        1.6,
+      ),
+      wood: this.material(owned, 'site-wood', new Color(0.16, 0.12, 0.08), 0.04, 0.3),
+      owned,
     };
 
     this.buildCitySquare();
@@ -62,6 +73,7 @@ export class CivicSites {
   }
 
   private material(
+    owned: StandardMaterial[],
     name: string,
     diffuse: Color,
     metalness: number,
@@ -81,7 +93,7 @@ export class CivicSites {
       material.emissiveIntensity = emissiveIntensity;
     }
     material.update();
-    this.materials.owned.push(material);
+    owned.push(material);
     return material;
   }
 
