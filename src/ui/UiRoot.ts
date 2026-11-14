@@ -8,6 +8,10 @@ import { PauseScreen, type PauseStats } from './screens/PauseScreen';
 import { Hud } from './screens/Hud';
 import { TouchControls, type TouchCallbacks } from './screens/TouchControls';
 import { FatalErrorScreen, type FatalErrorOptions } from './screens/FatalErrorScreen';
+import { DialogueScreen } from './screens/DialogueScreen';
+import { QuestLogScreen } from './screens/QuestLogScreen';
+import { PuzzleScreen } from './screens/PuzzleScreen';
+import type { DialogueSession, DialogueView, JournalView, PuzzleDefinition } from '../game/story/types';
 import { el } from './components/dom';
 
 export interface UiCallbacks {
@@ -15,9 +19,14 @@ export interface UiCallbacks {
   onResume: () => void;
   onQuit: () => void;
   onRetry: () => void;
+  onDialogueChoose?: (choiceId: string) => void;
+  onDialogueClose?: () => void;
+  onPuzzleSolved?: (puzzle: PuzzleDefinition) => void;
+  onPuzzleClose?: () => void;
+  onJournalClose?: () => void;
 }
 
-export type OverlayKind = 'settings' | 'credits' | 'pause' | null;
+export type OverlayKind = 'settings' | 'credits' | 'pause' | 'dialogue' | 'questlog' | 'puzzle' | null;
 
 /** Owns every DOM surface above the canvas and the transitions between them. */
 export class UiRoot {
@@ -28,6 +37,9 @@ export class UiRoot {
   readonly pause: PauseScreen;
   readonly settings: SettingsScreen;
   readonly credits: CreditsScreen;
+  readonly dialogue: DialogueScreen;
+  readonly questLog: QuestLogScreen;
+  readonly puzzle: PuzzleScreen;
   private readonly atmosphere: HTMLElement;
   private readonly fade: HTMLElement;
   private readonly callbacks: UiCallbacks;
@@ -66,6 +78,17 @@ export class UiRoot {
     });
     this.settings = new SettingsScreen(store, { onClose: () => this.closeSettings() });
     this.credits = new CreditsScreen({ onClose: () => this.closeCredits() });
+    this.dialogue = new DialogueScreen({
+      onChoose: (choiceId) => this.callbacks.onDialogueChoose?.(choiceId),
+      onClose: () => this.callbacks.onDialogueClose?.(),
+    });
+    this.questLog = new QuestLogScreen({
+      onClose: () => this.callbacks.onJournalClose?.(),
+    });
+    this.puzzle = new PuzzleScreen({
+      onSolved: (puzzle) => this.callbacks.onPuzzleSolved?.(puzzle),
+      onClose: () => this.callbacks.onPuzzleClose?.(),
+    });
 
     this.fade = el('div', { class: 'ui-fade', attrs: { 'aria-hidden': 'true' } });
 
@@ -78,6 +101,9 @@ export class UiRoot {
       this.pause.root,
       this.settings.root,
       this.credits.root,
+      this.dialogue.root,
+      this.questLog.root,
+      this.puzzle.root,
       this.fade,
     );
 
@@ -133,6 +159,12 @@ export class UiRoot {
     this.menu.show();
     this.hud.hide();
     this.touch.hide();
+    this.dialogue.hide();
+    this.questLog.hide();
+    this.puzzle.hide();
+    if (this.overlay === 'dialogue' || this.overlay === 'questlog' || this.overlay === 'puzzle') {
+      this.overlay = null;
+    }
     document.body.classList.add('is-menu');
     document.body.classList.remove('is-playing');
   }
@@ -224,7 +256,17 @@ export class UiRoot {
 
   /** True when Escape should close an overlay rather than toggle pause. */
   get hasTransientOverlay(): boolean {
-    return this.overlay === 'settings' || this.overlay === 'credits';
+    return (
+      this.overlay === 'settings' ||
+      this.overlay === 'credits' ||
+      this.overlay === 'dialogue' ||
+      this.overlay === 'questlog' ||
+      this.overlay === 'puzzle'
+    );
+  }
+
+  get hasStoryOverlay(): boolean {
+    return this.dialogue.isActive || this.questLog.isActive || this.puzzle.isActive;
   }
 
   closeTransientOverlay(): boolean {
@@ -236,7 +278,61 @@ export class UiRoot {
       this.closeCredits();
       return true;
     }
+    if (this.overlay === 'dialogue') {
+      this.callbacks.onDialogueClose?.();
+      return true;
+    }
+    if (this.overlay === 'questlog') {
+      this.callbacks.onJournalClose?.();
+      return true;
+    }
+    if (this.overlay === 'puzzle') {
+      this.callbacks.onPuzzleClose?.();
+      return true;
+    }
     return false;
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* Story surfaces                                                   */
+  /* ---------------------------------------------------------------- */
+
+  showDialogue(session: DialogueSession): void {
+    this.dialogue.showSession(session);
+    this.overlay = 'dialogue';
+  }
+
+  updateDialogue(view: DialogueView): void {
+    this.dialogue.setView(view);
+  }
+
+  hideDialogue(): void {
+    this.dialogue.hide();
+    if (this.overlay === 'dialogue') this.overlay = null;
+  }
+
+  showQuestLog(view: JournalView): void {
+    this.questLog.showLog(view);
+    this.overlay = 'questlog';
+  }
+
+  refreshQuestLog(view: JournalView): void {
+    this.questLog.refresh(view);
+  }
+
+  hideQuestLog(): void {
+    this.questLog.hide();
+    if (this.overlay === 'questlog') this.overlay = null;
+  }
+
+  showPuzzle(puzzle: PuzzleDefinition): void {
+    this.puzzle.showPuzzle(puzzle);
+    this.overlay = 'puzzle';
+  }
+
+  hidePuzzle(): void {
+    this.puzzle.hide();
+    if (this.overlay === 'puzzle') this.overlay = null;
   }
 
   /* ---------------------------------------------------------------- */
@@ -275,6 +371,9 @@ export class UiRoot {
     this.pause.hide();
     this.settings.hide();
     this.credits.hide();
+    this.dialogue.hide();
+    this.questLog.hide();
+    this.puzzle.hide();
   }
 
   clearFatal(): void {
@@ -285,6 +384,9 @@ export class UiRoot {
   dispose(): void {
     this.unsubscribe();
     this.settings.destroy();
+    this.dialogue.destroy();
+    this.questLog.destroy();
+    this.puzzle.destroy();
     this.fatal?.destroy();
   }
 }

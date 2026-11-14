@@ -2311,3 +2311,792 @@ body.is-menu {
     display: none;
   }
 }
+
+/* -------------------------------------------------------------------------- */
+/* Chapter One — story surfaces                                                */
+/* -------------------------------------------------------------------------- */
+
+.hud__compass-marker.is-main {
+  border-color: var(--amber);
+  background: rgba(255, 178, 107, 0.32);
+  box-shadow: 0 0 14px rgba(255, 178, 107, 0.55);
+}
+
+.hud__compass-marker.is-side {
+  border-color: var(--bio);
+  background: rgba(121, 240, 207, 0.3);
+  box-shadow: 0 0 14px rgba(121, 240, 207, 0.48);
+}
+
+/* Dialogue ---------------------------------------------------------------- */
+
+.dialogue {
+  align-items: flex-end;
+  justify-content: center;
+  padding: clamp(18px, 4vw, 56px);
+}
+
+.dialogue__card {
+  position: relative;
+  width: min(920px, 100%);
+  max-height: min(78vh, 640px);
+  overflow-y: auto;
+  padding: clamp(22px, 3vw, 38px);
+  background:
+    linear-gradient(130deg, rgba(9, 23, 27, 0.97), rgba(4, 12, 15, 0.99)),
+    radial-gradient(circle at 92% 0%, rgba(121, 240, 207, 0.12), transparent 55%);
+  border: 1px solid rgba(242, 236, 223, 0.16);
+  border-left: 2px solid var(--amber);
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.7);
+  transform: translateY(22px);
+  transition: transform 0.45s var(--ease);
+  scrollbar-width: thin;
+}
+
+.dialogue.is-active .dialogue__card {
+  transform: translateY(0);
+}
+
+.dialogue__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(242, 236, 223, 0.1);
+}
+
+.dialogue__speaker {
+  font-family: var(--serif);
+  font-size: clamp(20px, 2.4vw, 28px);
+  letter-spacing: 0.06em;
+  color: var(--ivory);
+}
+
+.dialogue__role {
+  margin-top: 5px;
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: var(--amber);
+}
+
+.dialogue__close {
+  flex: none;
+  padding: 7px 12px;
+  border: 1px solid rgba(242, 236, 223, 0.18);
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.dialogue__close:hover,
+.dialogue__close:focus-visible {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+
+.dialogue__title {
+  margin: 16px 0 10px;
+  font-family: var(--serif);
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  color: var(--amber);
+}
+
+.dialogue__text {
+  margin: 0 0 20px;
+  white-space: pre-line;
+  font-family: var(--serif);
+  font-size: clamp(13px, 1.4vw, 16px);
+  line-height: 1.85;
+  letter-spacing: 0.015em;
+  color: var(--ivory-dim);
+}
+
+.dialogue__choices {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.dialogue__choice {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 14px;
+  border: 1px solid rgba(242, 236, 223, 0.16);
+  background: rgba(242, 236, 223, 0.025);
+  color: var(--ivory);
+  font-family: var(--serif);
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.2s var(--ease), background 0.2s var(--ease), transform 0.2s var(--ease);
+}
+
+.dialogue__choice:hover,
+.dialogue__choice:focus-visible {
+  border-color: var(--bio);
+  background: rgba(121, 240, 207, 0.08);
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.dialogue__choice-key {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 19px;
+  height: 19px;
+  border: 1px solid rgba(242, 236, 223, 0.24);
+  color: var(--amber);
+  font-family: var(--mono);
+  font-size: 8px;
+}
+
+.dialogue__choice-text {
+  min-width: 0;
+}
+
+.dialogue__foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  margin-top: 18px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(242, 236, 223, 0.08);
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(207, 200, 186, 0.48);
+}
+
+.dialogue__sigil {
+  color: var(--amber);
+  font-size: 14px;
+}
+
+.dialogue__solved,
+.dialogue__choice + p {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 13px;
+  color: var(--bio);
+}
+
+/* Journal ----------------------------------------------------------------- */
+
+.questlog {
+  align-items: center;
+  justify-content: center;
+  padding: clamp(14px, 3vw, 42px);
+}
+
+.questlog__card {
+  width: min(1060px, 100%);
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+  background: linear-gradient(150deg, rgba(9, 23, 27, 0.985), rgba(4, 12, 15, 0.995));
+  border: 1px solid rgba(242, 236, 223, 0.16);
+  box-shadow: 0 34px 100px rgba(0, 0, 0, 0.78);
+  transform: translateY(14px) scale(0.99);
+  transition: transform 0.4s var(--ease);
+}
+
+.questlog.is-active .questlog__card {
+  transform: translateY(0) scale(1);
+}
+
+.questlog__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18px;
+  padding: 26px 30px 20px;
+  border-bottom: 1px solid rgba(242, 236, 223, 0.1);
+  background: radial-gradient(circle at 85% 0%, rgba(255, 178, 107, 0.09), transparent 55%);
+}
+
+.questlog__title {
+  margin: 6px 0 4px;
+  font-family: var(--serif);
+  font-size: clamp(24px, 3vw, 36px);
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  color: var(--ivory);
+}
+
+.questlog__subtitle {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.questlog__summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  background: rgba(242, 236, 223, 0.08);
+  border-bottom: 1px solid rgba(242, 236, 223, 0.1);
+}
+
+.questlog__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 13px 18px;
+  background: rgba(4, 12, 15, 0.92);
+}
+
+.questlog__stat span {
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.questlog__stat b {
+  font-family: var(--serif);
+  font-size: 19px;
+  font-weight: 400;
+  color: var(--amber);
+}
+
+.questlog__body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 22px 30px 26px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(242, 236, 223, 0.2) transparent;
+}
+
+.questlog__section {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 22px;
+}
+
+.questlog__section-title {
+  margin: 0 0 2px;
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--amber);
+}
+
+.questlog__mission {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid rgba(242, 236, 223, 0.12);
+  border-left: 2px solid rgba(242, 236, 223, 0.18);
+  background: rgba(242, 236, 223, 0.018);
+}
+
+.questlog__mission.is-active {
+  border-left-color: var(--amber);
+  background: linear-gradient(90deg, rgba(255, 178, 107, 0.07), transparent 72%);
+}
+
+.questlog__mission.is-complete {
+  border-left-color: var(--bio);
+  opacity: 0.82;
+}
+
+.questlog__mission.is-side.is-active {
+  border-left-color: var(--bio);
+  background: linear-gradient(90deg, rgba(121, 240, 207, 0.06), transparent 72%);
+}
+
+.questlog__mission.is-locked {
+  opacity: 0.55;
+}
+
+.questlog__mission-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: flex-start;
+}
+
+.questlog__tag {
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--bio);
+}
+
+.questlog__mission.is-side .questlog__tag {
+  color: var(--bio);
+}
+
+.questlog__mission-head h4 {
+  margin: 4px 0 2px;
+  font-family: var(--serif);
+  font-size: 19px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  color: var(--ivory);
+}
+
+.questlog__giver {
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.questlog__status {
+  flex: none;
+  padding: 3px 7px;
+  border: 1px solid rgba(242, 236, 223, 0.2);
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.questlog__status.is-active {
+  border-color: rgba(255, 178, 107, 0.5);
+  color: var(--amber);
+}
+
+.questlog__status.is-complete {
+  border-color: rgba(121, 240, 207, 0.5);
+  color: var(--bio);
+}
+
+.questlog__summary-text {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--ivory-dim);
+}
+
+.questlog__objectives {
+  display: grid;
+  gap: 4px;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.questlog__objective {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  padding: 3px 0;
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.questlog__objective.is-current {
+  color: var(--ivory);
+}
+
+.questlog__objective.is-done {
+  color: rgba(121, 240, 207, 0.7);
+  text-decoration: line-through;
+  text-decoration-color: rgba(121, 240, 207, 0.35);
+}
+
+.questlog__check {
+  flex: none;
+  width: 13px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--amber);
+  text-align: center;
+}
+
+.questlog__objective.is-done .questlog__check {
+  color: var(--bio);
+}
+
+.questlog__count {
+  margin-left: auto;
+  flex: none;
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--amber);
+}
+
+.questlog__reward {
+  display: flex;
+  gap: 9px;
+  align-items: baseline;
+  padding-top: 6px;
+  border-top: 1px dashed rgba(242, 236, 223, 0.1);
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.questlog__reward span {
+  color: var(--muted);
+}
+
+.questlog__reward b {
+  color: var(--bio);
+  font-weight: 400;
+}
+
+.questlog__locked,
+.questlog__empty {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.questlog__archive {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(242, 236, 223, 0.1);
+}
+
+.questlog__archive-col {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.questlog__items,
+.questlog__codex {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.questlog__items li {
+  padding: 6px 9px;
+  border: 1px solid rgba(255, 178, 107, 0.24);
+  color: var(--ivory);
+  font-family: var(--serif);
+  font-size: 11px;
+}
+
+.questlog__codex li {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 11px;
+  color: var(--ivory-dim);
+}
+
+.questlog__codex-cat {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 7px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--bio);
+}
+
+.questlog__ending-card {
+  display: grid;
+  gap: 8px;
+  padding: 18px 20px;
+  margin-top: 4px;
+  border: 1px solid rgba(255, 178, 107, 0.34);
+  background: radial-gradient(circle at 12% 0%, rgba(255, 178, 107, 0.12), transparent 60%);
+}
+
+.questlog__ending-card h3 {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 24px;
+  font-weight: 400;
+  color: var(--ivory);
+}
+
+.questlog__ending-sub {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--amber);
+}
+
+.questlog__ending-card p {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 12px;
+  line-height: 1.75;
+  color: var(--ivory-dim);
+}
+
+.questlog__epitaph {
+  font-style: italic;
+  color: var(--amber) !important;
+}
+
+.questlog__foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 11px 30px;
+  border-top: 1px solid rgba(242, 236, 223, 0.1);
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(207, 200, 186, 0.45);
+}
+
+.questlog__glyph {
+  color: var(--amber);
+  font-size: 13px;
+}
+
+/* Puzzle ------------------------------------------------------------------ */
+
+.puzzle {
+  align-items: center;
+  justify-content: center;
+  padding: clamp(16px, 4vw, 48px);
+}
+
+.puzzle__card {
+  width: min(780px, 100%);
+  max-height: 92vh;
+  overflow-y: auto;
+  padding: clamp(24px, 3.5vw, 42px);
+  border-top: 2px solid var(--bio);
+  transform: translateY(16px);
+  transition: transform 0.4s var(--ease);
+  scrollbar-width: thin;
+}
+
+.puzzle.is-active .puzzle__card {
+  transform: translateY(0);
+}
+
+.puzzle__title {
+  margin: 8px 0 8px;
+  font-family: var(--serif);
+  font-size: clamp(24px, 3vw, 34px);
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  color: var(--ivory);
+}
+
+.puzzle__briefing {
+  margin: 0 0 22px;
+  font-family: var(--serif);
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--ivory-dim);
+}
+
+.puzzle__dials {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.puzzle__dial {
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  padding: 14px 10px;
+  border: 1px solid rgba(242, 236, 223, 0.16);
+  background: radial-gradient(circle at 50% 30%, rgba(121, 240, 207, 0.08), rgba(4, 12, 15, 0.75));
+}
+
+.puzzle__dial-label {
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--amber);
+}
+
+.puzzle__dial-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.puzzle__step {
+  width: 30px;
+  height: 34px;
+  border: 1px solid rgba(242, 236, 223, 0.24);
+  background: transparent;
+  color: var(--ivory);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.puzzle__step:hover,
+.puzzle__step:focus-visible {
+  border-color: var(--bio);
+  color: var(--bio);
+  outline: none;
+}
+
+.puzzle__value {
+  display: grid;
+  place-items: center;
+  min-width: 82px;
+  min-height: 46px;
+  padding: 4px 6px;
+  border: 1px solid rgba(121, 240, 207, 0.32);
+  background: rgba(121, 240, 207, 0.06);
+  font-family: var(--serif);
+  font-size: 19px;
+  letter-spacing: 0.1em;
+  color: var(--bio);
+  text-align: center;
+}
+
+.puzzle__dial-hint {
+  font-family: var(--mono);
+  font-size: 7px;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  text-align: center;
+}
+
+.puzzle__hint {
+  margin: 16px 0 0;
+  padding: 9px 12px;
+  border-left: 1px solid rgba(255, 178, 107, 0.5);
+  background: rgba(255, 178, 107, 0.05);
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: var(--amber);
+}
+
+.puzzle__status {
+  min-height: 20px;
+  margin: 14px 0;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+
+.puzzle__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.puzzle__foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 20px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(242, 236, 223, 0.1);
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  color: rgba(207, 200, 186, 0.42);
+}
+
+.puzzle__glyph {
+  color: var(--bio);
+  font-size: 14px;
+}
+
+.puzzle.is-solved .puzzle__card {
+  border-top-color: var(--amber);
+  box-shadow: 0 0 70px rgba(255, 178, 107, 0.16), 0 30px 90px rgba(0, 0, 0, 0.7);
+}
+
+.puzzle.is-solved .puzzle__value {
+  border-color: rgba(255, 178, 107, 0.5);
+  color: var(--amber);
+}
+
+.puzzle.is-wrong .puzzle__card {
+  animation: puzzle-shake 0.36s ease;
+}
+
+@keyframes puzzle-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-6px); }
+  75% { transform: translateX(6px); }
+}
+
+/* Touch layout for extra story controls ----------------------------------- */
+
+.touch__btn--journal,
+.touch__btn--interact {
+  width: 50px;
+  height: 50px;
+  font-size: 7px;
+  border-color: rgba(121, 240, 207, 0.4);
+}
+
+@media (max-width: 760px) {
+  .dialogue {
+    padding: 10px 10px calc(14px + var(--safe-bottom));
+  }
+
+  .dialogue__choices {
+    grid-template-columns: 1fr;
+  }
+
+  .dialogue__card {
+    max-height: 82vh;
+  }
+
+  .questlog__summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .questlog__archive {
+    grid-template-columns: 1fr;
+  }
+
+  .questlog__head,
+  .questlog__body {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  .puzzle__dials {
+    grid-template-columns: 1fr;
+  }
+
+  .puzzle__dial {
+    grid-template-columns: auto 1fr;
+    align-items: center;
+  }
+
+  .puzzle__dial-hint {
+    grid-column: 1 / -1;
+  }
+}

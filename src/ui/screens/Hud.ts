@@ -5,7 +5,7 @@ import { Screen } from './Screen';
 
 export interface CompassMarker {
   bearing: number; // degrees, 0 = north, clockwise
-  kind: 'shard' | 'gate';
+  kind: 'shard' | 'gate' | 'main' | 'side';
 }
 
 interface ToastHandle {
@@ -98,6 +98,8 @@ export class Hud extends Screen {
       el('div', {}, [el('kbd', { text: 'SPACE' }), el('span', { text: 'Vault' })]),
       el('div', {}, [el('kbd', { text: 'E' }), el('span', { text: 'Echo pulse' })]),
       el('div', {}, [el('kbd', { text: 'F' }), el('span', { text: 'Scan specimen' })]),
+      el('div', {}, [el('kbd', { text: 'R' }), el('span', { text: 'Interact' })]),
+      el('div', {}, [el('kbd', { text: 'J' }), el('span', { text: 'Journal' })]),
       el('div', {}, [el('kbd', { text: 'ESC' }), el('span', { text: 'Pause' })]),
     ]);
     this.promptLabel = el('span', { text: '' });
@@ -265,6 +267,8 @@ export class Hud extends Screen {
       }
       marker.style.display = 'block';
       marker.classList.toggle('is-gate', data.kind === 'gate');
+      marker.classList.toggle('is-main', data.kind === 'main');
+      marker.classList.toggle('is-side', data.kind === 'side');
       marker.style.transform = `translate(-50%, 0) translateX(${diff * pxPerDegree}px) rotate(45deg)`;
     });
     const cardinal = CARDINALS[Math.round(this.currentHeading / 45) % 8];
