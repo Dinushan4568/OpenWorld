@@ -10,6 +10,7 @@ export interface TouchCallbacks {
   onScan: () => void;
   onInteract?: () => void;
   onJournal?: () => void;
+  onCharacter?: () => void;
   onPause: () => void;
 }
 
@@ -38,6 +39,7 @@ export class TouchControls {
     const scan = el('button', { class: 'touch__btn touch__btn--scan', attrs: { type: 'button' }, text: 'Scan' });
     const interact = el('button', { class: 'touch__btn touch__btn--interact', attrs: { type: 'button' }, text: 'Use' });
     const journal = el('button', { class: 'touch__btn touch__btn--journal', attrs: { type: 'button' }, text: 'Log' });
+    const character = el('button', { class: 'touch__btn touch__btn--character', attrs: { type: 'button' }, text: 'Field' });
     this.sprintButton = el('button', {
       class: 'touch__btn',
       attrs: { type: 'button', 'aria-pressed': 'false' },
@@ -49,7 +51,7 @@ export class TouchControls {
       html: '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>',
     });
 
-    const buttons = el('div', { class: 'touch__buttons' }, [pause, journal, scan, pulse, interact, jump, this.sprintButton]);
+    const buttons = el('div', { class: 'touch__buttons' }, [pause, journal, character, scan, pulse, interact, jump, this.sprintButton]);
     this.root = el('div', { class: 'touch' }, [this.lookArea, this.stick, buttons]);
 
     this.bindStick();
@@ -71,6 +73,7 @@ export class TouchControls {
       this.callbacks.onInteract?.();
     });
     journal.addEventListener('click', () => this.callbacks.onJournal?.());
+    character.addEventListener('click', () => this.callbacks.onCharacter?.());
     pause.addEventListener('click', () => this.callbacks.onPause());
     this.sprintButton.addEventListener('click', () => {
       this.sprint = !this.sprint;

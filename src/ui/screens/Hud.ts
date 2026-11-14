@@ -5,7 +5,7 @@ import { Screen } from './Screen';
 
 export interface CompassMarker {
   bearing: number; // degrees, 0 = north, clockwise
-  kind: 'shard' | 'gate' | 'main' | 'side';
+  kind: 'shard' | 'gate' | 'main' | 'side' | 'resource';
 }
 
 interface ToastHandle {
@@ -24,7 +24,15 @@ export class Hud extends Screen {
   private readonly compassTrack: HTMLElement;
   private readonly compassHeading: HTMLElement;
   private readonly shardEl: HTMLElement;
+  private readonly levelEl: HTMLElement;
+  private readonly levelValue: HTMLElement;
+  private readonly xpFill: HTMLElement;
+  private readonly xpText: HTMLElement;
   private readonly statsEl: HTMLElement;
+  private readonly staminaEl: HTMLElement;
+  private readonly staminaFill: HTMLElement;
+  private readonly staminaText: HTMLElement;
+  private readonly staminaValue: HTMLElement;
   private readonly fpsEl: HTMLElement;
   private readonly hints: HTMLElement;
   private readonly prompt: HTMLElement;
@@ -90,6 +98,21 @@ export class Hud extends Screen {
       el('span', { class: 'glyph', attrs: { 'aria-hidden': 'true' } }),
       el('span', { text: `0 / ${this.totalShards}` }),
     ]);
+    this.levelValue = el('b', { class: 'hud__level-value', text: '1' });
+    this.xpFill = el('i');
+    this.xpText = el('span', { class: 'hud__xp-text', text: '0 XP' });
+    this.levelEl = el('div', { class: 'hud__level', attrs: { 'aria-label': 'Character level and experience' } }, [
+      el('span', { class: 'hud__level-badge', attrs: { 'aria-hidden': 'true' }, text: 'LV' }),
+      this.levelValue,
+      el('div', { class: 'hud__xp' }, [el('div', { class: 'hud__xp-track' }, [this.xpFill]), this.xpText]),
+    ]);
+    this.staminaFill = el('i');
+    this.staminaText = el('span', { text: 'STAMINA' });
+    this.staminaValue = el('b', { text: '100' });
+    this.staminaEl = el('div', { class: 'hud__stamina', attrs: { 'aria-label': 'Stamina' } }, [
+      el('div', { class: 'hud__stamina-head' }, [this.staminaText, this.staminaValue]),
+      el('div', { class: 'hud__stamina-track' }, [this.staminaFill]),
+    ]);
     this.statsEl = el('div', { class: 'hud__stats', text: '' });
     this.fpsEl = el('div', { class: 'hud__fps', text: '' });
     this.hints = el('div', { class: 'hud__hints' }, [
@@ -100,6 +123,7 @@ export class Hud extends Screen {
       el('div', {}, [el('kbd', { text: 'F' }), el('span', { text: 'Scan specimen' })]),
       el('div', {}, [el('kbd', { text: 'R' }), el('span', { text: 'Interact' })]),
       el('div', {}, [el('kbd', { text: 'J' }), el('span', { text: 'Journal' })]),
+      el('div', {}, [el('kbd', { text: 'C' }), el('span', { text: 'Character' })]),
       el('div', {}, [el('kbd', { text: 'ESC' }), el('span', { text: 'Pause' })]),
     ]);
     this.promptLabel = el('span', { text: '' });
@@ -147,7 +171,7 @@ export class Hud extends Screen {
     ]);
 
     const tl = el('div', { class: 'hud__tl' }, [this.locationEl, this.coordsEl, this.clockEl, objectiveCard]);
-    const tr = el('div', { class: 'hud__tr' }, [this.shardEl, this.statsEl]);
+    const tr = el('div', { class: 'hud__tr' }, [this.levelEl, this.staminaEl, this.shardEl, this.statsEl]);
 
     this.root.append(
       this.waterEl,
@@ -179,7 +203,7 @@ export class Hud extends Screen {
       this.ticks.push({ bearing: deg, element: tick });
     }
     // Marker pool — reused each frame, no per-frame DOM churn.
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 8; i++) {
       const marker = el('div', { class: 'hud__compass-marker', style: { display: 'none' } });
       this.compassTrack.appendChild(marker);
       this.markerElements.push(marker);
@@ -222,6 +246,26 @@ export class Hud extends Screen {
 
   setStats(text: string): void {
     this.statsEl.textContent = text;
+  }
+
+  /** Level, experience and unspent skill points in the top-right cluster. */
+  setStamina(value: number, max: number): void {
+    const percent = max > 0 ? Math.min(100, (value / max) * 100) : 0;
+    this.staminaFill.style.width = `${percent}%`;
+    const rounded = String(Math.round(value));
+    if (this.staminaValue.textContent !== rounded) this.staminaValue.textContent = rounded;
+    this.staminaEl.classList.toggle('is-low', percent < 22);
+    this.staminaEl.classList.toggle('is-full', percent > 99);
+  }
+
+  setProgression(level: number, xp: number, xpToNext: number, skillPoints: number): void {
+    this.levelValue.textContent = String(level);
+    const percent = xpToNext > 0 ? Math.min(100, (xp / xpToNext) * 100) : 100;
+    this.xpFill.style.width = `${percent}%`;
+    this.xpText.textContent = xpToNext > 0
+      ? `${Math.round(xp)} / ${Math.round(xpToNext)} XP${skillPoints > 0 ? ` · ${skillPoints} SP` : ''}`
+      : `Level cap · ${skillPoints > 0 ? `${skillPoints} SP` : 'maxed'}`;
+    this.levelEl.classList.toggle('has-points', skillPoints > 0);
   }
 
   setFps(text: string, visible: boolean): void {
@@ -269,6 +313,7 @@ export class Hud extends Screen {
       marker.classList.toggle('is-gate', data.kind === 'gate');
       marker.classList.toggle('is-main', data.kind === 'main');
       marker.classList.toggle('is-side', data.kind === 'side');
+      marker.classList.toggle('is-resource', data.kind === 'resource');
       marker.style.transform = `translate(-50%, 0) translateX(${diff * pxPerDegree}px) rotate(45deg)`;
     });
     const cardinal = CARDINALS[Math.round(this.currentHeading / 45) % 8];

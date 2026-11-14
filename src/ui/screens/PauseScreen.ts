@@ -6,6 +6,7 @@ export interface PauseScreenCallbacks {
   onResume: () => void;
   onSettings: () => void;
   onQuit: () => void;
+  onCharacter?: () => void;
 }
 
 export interface PauseStats {
@@ -43,6 +44,7 @@ export class PauseScreen extends Screen {
         el('div', {}, [el('span', { text: 'Move' }), el('kbd', { text: 'W A S D' })]),
         el('div', {}, [el('span', { text: 'Run · Jump · Pulse' }), el('span', {}, [el('kbd', { text: 'SHIFT' }), ' ', el('kbd', { text: 'SPACE' }), ' ', el('kbd', { text: 'E' })])]),
         el('div', {}, [el('span', { text: 'Interact · Journal' }), el('span', {}, [el('kbd', { text: 'R' }), ' ', el('kbd', { text: 'J' })])]),
+        el('div', {}, [el('span', { text: 'Character record' }), el('kbd', { text: 'C' })]),
         el('div', {}, [el('span', { text: 'Look · Zoom' }), el('span', {}, [el('kbd', { text: 'MOUSE' }), ' ', el('kbd', { text: 'WHEEL' })])]),
       ]),
       el('div', { class: 'pause__actions' }, [
@@ -52,6 +54,14 @@ export class PauseScreen extends Screen {
           text: 'Resume expedition',
           on: { click: () => this.callbacks.onResume() },
         }),
+        this.callbacks.onCharacter
+          ? el('button', {
+              class: 'btn btn--ghost',
+              attrs: { type: 'button' },
+              text: 'Field record',
+              on: { click: () => this.callbacks.onCharacter?.() },
+            })
+          : null,
         el('button', {
           class: 'btn btn--ghost',
           attrs: { type: 'button' },

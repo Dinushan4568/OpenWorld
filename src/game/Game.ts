@@ -13,6 +13,9 @@ import type { PauseStats } from '../ui/screens/PauseScreen';
 import { World } from './world/World';
 import { StoryWorld } from './world/StoryWorld';
 import { StoryDirector, type StoryNotice } from './story/StoryDirector';
+import { ProgressionSystem } from './progression/ProgressionSystem';
+import { IndexedDBProgressionStore } from './progression/store';
+import { ResourceNodes, type ResourceInteraction } from './world/ResourceNodes';
 import { MAIN_MISSION_IDS } from './story/content';
 import type { DialogueSession, PuzzleDefinition } from './story/types';
 
@@ -38,16 +41,22 @@ export class Game {
   private readonly ui: UiRoot;
   private readonly input: InputManager;
   private readonly story = new StoryDirector();
+  private readonly progression = new ProgressionSystem({
+    persistence: new IndexedDBProgressionStore(),
+    autoSave: true,
+  });
 
   private engine: Engine | null = null;
   private assets: AssetManager | null = null;
   private world: World | null = null;
   private storyWorld: StoryWorld | null = null;
+  private resourceWorld: ResourceNodes | null = null;
   private player: PlayerController | null = null;
   private camera: ThirdPersonCamera | null = null;
   private dialogueSession: DialogueSession | null = null;
   private activePuzzle: PuzzleDefinition | null = null;
   private storyModal = false;
+  private characterFromPause = false;
   private pendingEnding = false;
 
   private state: GameState = 'boot';
@@ -59,6 +68,12 @@ export class Game {
   private fps = 0;
   private saveTimer = 0;
   private pulseCooldown = 0;
+  private stamina = 100;
+  private staminaMax = 100;
+  private staminaBlocked = false;
+  private travelDistance = 0;
+  private travelTime = 0;
+  private lastTravel: { x: number; z: number } | null = null;
   private encounterTimer = 0;
   private encounterTargetId: string | null = null;
   private lastArea = '';
@@ -85,6 +100,7 @@ export class Game {
       onToggleMute: () => this.toggleMute(),
       onInteract: () => this.interactNearest(),
       onJournal: () => this.toggleJournal(),
+      onCharacter: () => this.toggleCharacter(),
       onPointerLockLost: () => {
         if (this.state === 'playing' && !this.storyModal) this.pause('pointer-lock');
       },
@@ -99,6 +115,7 @@ export class Game {
       onScan: () => this.scanCreature(),
       onInteract: () => this.interactNearest(),
       onJournal: () => this.toggleJournal(),
+      onCharacter: () => this.toggleCharacter(),
       onPause: () => this.togglePause(),
     };
 
@@ -112,10 +129,18 @@ export class Game {
       onPuzzleSolved: (puzzle) => this.solvePuzzle(puzzle),
       onPuzzleClose: () => this.closePuzzle(),
       onJournalClose: () => this.closeJournal(),
+      onCharacterClose: () => this.closeCharacter(),
+      onPauseCharacter: () => this.openCharacterFromPause(),
+      onUnlockSkill: (id) => this.unlockSkill(id),
+      onEquipItem: (id) => this.equipItem(id),
+      onUnequipItem: (slot) => this.unequipItem(slot),
+      onUpgradeItem: (id) => this.upgradeItem(id),
+      onCraftItem: (id) => this.craftItem(id),
     };
 
     this.ui = new UiRoot(this.uiRoot, this.settings, uiCallbacks, touchCallbacks);
     this.bindStoryEvents();
+    this.bindProgressionEvents();
     this.bindPreferences();
     this.bindWindowLifecycle();
     this.bindGlobalErrorHandling();
@@ -162,6 +187,7 @@ export class Game {
       });
       this.world = world;
       this.storyWorld = new StoryWorld(engine.app, this.assets);
+      this.resourceWorld = new ResourceNodes(engine.app);
       this.bindCreatureEvents(world);
 
       const spawn = world.spawn;
@@ -174,6 +200,11 @@ export class Game {
       );
       this.player.root.enabled = false;
       this.bindPlayerEvents();
+
+      this.ui.updateLoading('Restoring field record', 0.96);
+      await this.progression.load();
+      this.applyProgression();
+      this.syncProgressionFromWorld();
 
       this.camera = new ThirdPersonCamera(engine.cameraEntity, startHeading);
       this.camera.setCollisionWorld(world.collision);
@@ -191,7 +222,11 @@ export class Game {
         engine.rendererLabel,
         `${this.settings.get('quality')} · ${this.assets.loadedCount}/${this.assets.total} props`,
       );
-      this.ui.setMenuWarning(this.describeAssetFailures());
+      const warnings = [
+        this.describeAssetFailures(),
+        this.progression.loadError ? `Field record could not be restored: ${this.progression.loadError}` : null,
+      ].filter((entry): entry is string => Boolean(entry));
+      this.ui.setMenuWarning(warnings.length ? warnings.join(' ') : null);
       this.ui.showMenu(this.progressSummary());
       this.state = 'menu';
       this.input.setEnabled(false);
@@ -208,6 +243,7 @@ export class Game {
 
   private hydrateMenu(): void {
     if (!this.world) return;
+    this.applyProgression();
     this.ui.hud.setShards(this.world.collectibles.collectedCount, this.world.collectibles.total);
     this.ui.hud.setObjective(this.objectiveText());
     this.storyWorld?.apply(this.story.worldView());
@@ -241,6 +277,13 @@ export class Game {
         this.world.setGateEnergy(0);
         this.story.reset();
         this.story.setShards(0);
+        await this.progression.reset();
+        this.staminaMax = this.progression.stats.maxStamina;
+        this.staminaBlocked = false;
+        this.pulseCooldown = 0;
+        this.travelDistance = 0;
+        this.travelTime = 0;
+        this.lastTravel = null;
         const spawn = this.world.spawn;
         this.player.teleport(spawn.x, spawn.z, spawn.heading);
         this.player.heading = spawn.heading;
@@ -257,9 +300,15 @@ export class Game {
         this.player.teleport(safe.x, safe.z);
       }
 
+      this.stamina = this.staminaMax;
       this.story.setShards(this.world.collectibles.collectedCount);
       this.story.updatePosition(this.player.position.x, this.player.position.z);
+      this.syncProgressionFromWorld();
       this.syncStoryState();
+      this.lastTravel = { ...this.player.position };
+      this.travelDistance = 0;
+      this.travelTime = 0;
+      this.applyProgression();
 
       // Pointer lock must be requested inside the click gesture.
       if (!isTouchDevice()) void this.input.requestPointerLock();
@@ -309,13 +358,7 @@ export class Game {
     this.input.setEnabled(false);
     this.input.exitPointerLock();
     this.saveProgress();
-    const stats: PauseStats = {
-      shards: this.world?.collectibles.collectedCount ?? 0,
-      total: this.world?.collectibles.total ?? SHARD_LOCATIONS.length,
-      elapsed: formatDuration(this.elapsed),
-      area: this.world?.getAreaName(this.player.position.x, this.player.position.z) ?? 'Mirrorwater',
-    };
-    this.ui.showPause(stats);
+    this.ui.showPause(this.pauseStats());
     if (reason === 'pointer-lock' && !this.pointerLockWarned) {
       this.pointerLockWarned = true;
       this.ui.toast('Mouse released — expedition paused', 'default');
@@ -362,6 +405,8 @@ export class Game {
     this.ui.hideDialogue();
     this.ui.hideQuestLog();
     this.ui.hidePuzzle();
+    this.ui.hideCharacter();
+    this.characterFromPause = false;
     this.camera?.clearFrame();
     this.camera?.setCinematic(true);
     this.ui.refreshMenuProgress(this.progressSummary());
@@ -393,6 +438,7 @@ export class Game {
         interactive: false,
       });
       this.storyWorld?.update(dt, this.worldTime, this.player.position);
+      this.resourceWorld?.update(dt, this.worldTime, this.player.position);
       return;
     }
 
@@ -413,6 +459,7 @@ export class Game {
         interactive: false,
       });
       this.storyWorld?.update(dt, this.worldTime, this.player.position);
+      this.resourceWorld?.update(dt, this.worldTime, this.player.position);
       return;
     }
 
@@ -431,7 +478,9 @@ export class Game {
       const wheel = this.input.consumeWheel();
       if (wheel !== 0) this.camera.zoom(wheel);
       axis = this.input.moveAxis();
-      sprinting = this.input.wantsSprint;
+      if (this.stamina <= 0.4) this.staminaBlocked = true;
+      if (this.stamina >= this.staminaMax * 0.25) this.staminaBlocked = false;
+      sprinting = this.input.wantsSprint && !this.staminaBlocked;
       jump = this.input.wantsJump;
     } else {
       // Cinematic encounter: the player stands still while the camera frames
@@ -448,6 +497,31 @@ export class Game {
       run: sprinting,
       jump,
     });
+
+    const stats = this.progression.stats;
+    if (sprinting && this.player.speed > 0.8 && this.player.grounded) {
+      this.stamina = Math.max(0, this.stamina - 13 * dt);
+    } else {
+      this.stamina = Math.min(this.staminaMax, this.stamina + stats.staminaRegen * dt);
+    }
+
+    if (this.lastTravel) {
+      const step = distance2D(
+        this.lastTravel.x,
+        this.lastTravel.z,
+        this.player.position.x,
+        this.player.position.z,
+      );
+      if (step < 20) this.travelDistance += step;
+      this.travelTime += dt;
+    }
+    this.lastTravel = { x: this.player.position.x, z: this.player.position.z };
+    if (this.travelTime >= 5) {
+      this.progression.recordTravel(this.travelDistance, this.travelTime);
+      this.travelDistance = 0;
+      this.travelTime = 0;
+    }
+
     this.camera.update(dt, this.player.position, {
       sprinting,
       wading: this.player.wading,
@@ -463,9 +537,11 @@ export class Game {
     });
     if (collected) this.onShardCollected(collected);
     this.storyWorld?.update(dt, this.worldTime, this.player.position);
+    this.resourceWorld?.update(dt, this.worldTime, this.player.position);
     this.story.updatePosition(this.player.position.x, this.player.position.z);
 
     this.ui.hud.setWater(this.player.wading);
+    this.ui.hud.setStamina(this.stamina, this.staminaMax);
     this.ui.hud.tickHints(dt, this.player.speed > 0.6);
     this.hudTimer += dt;
     if (this.hudTimer > 0.1) {
@@ -508,7 +584,25 @@ export class Game {
     if (this.world.collectibles.allCollected) {
       markers.unshift({ bearing: bearingTo(position.x, position.z, WORLD.gateCenter.x, WORLD.gateCenter.z), kind: 'gate' });
     }
+    if (this.progression.hasAbility('survey-instinct') && this.resourceWorld) {
+      const gathered = new Set(this.progression.profile.gatheredNodes);
+      const caches = this.resourceWorld.placements
+        .filter((node) => !gathered.has(node.id))
+        .map((node) => ({ node, distance: distance2D(position.x, position.z, node.x, node.z) }))
+        .filter((entry) => entry.distance < 140)
+        .sort((a, b) => a.distance - b.distance)
+        .slice(0, this.progression.hasAbility('wayfinder') ? 3 : 1);
+      for (const { node } of caches) {
+        markers.push({ bearing: bearingTo(position.x, position.z, node.x, node.z), kind: 'resource' });
+      }
+    }
     this.ui.hud.setHeading(heading, markers);
+    this.ui.hud.setProgression(
+      this.progression.profile.level,
+      this.progression.profile.xp,
+      this.progression.stats.xpToNext,
+      this.progression.stats.skillPoints,
+    );
 
     const speed = this.player.speed;
     if (this.world.testRange) {
@@ -536,9 +630,9 @@ export class Game {
       const inEncounter = this.encounterTimer > 0 && this.encounterTargetId !== null;
       const scanning = inEncounter || wildlife.hasScanCandidate(position, this.camera!.yaw, this.scanRange());
       this.ui.hud.setScanReady(scanning);
-      const interaction = this.storyWorld?.nearestInteraction(position) ?? null;
+      const interaction = this.nearestInteraction();
       if (inEncounter) this.ui.hud.showPrompt('Scan the machine', 'F');
-      else if (interaction) this.ui.hud.showPrompt(interaction.label, 'R');
+      else if (interaction) this.ui.hud.showPrompt(interaction.value.label, 'R');
       else if (scanning) this.ui.hud.showPrompt('Scan robotic creature', 'F');
       else this.ui.hud.hidePrompt();
     }
@@ -622,12 +716,18 @@ export class Game {
         this.syncStoryState();
       }),
       missions.on('missionCompleted', ({ mission, reward, nextMission }) => {
+        this.progression.awardMission(mission.id, reward.marks);
         this.syncStoryState();
         if (this.state !== 'playing') return;
         this.audio.pickup();
         this.ui.hud.banner(mission.title, `Mission complete · +${reward.marks} marks`, 5200);
         this.ui.toast(reward.label, 'accent', 5600);
         if (nextMission) this.ui.toast(`Next lead · ${nextMission.title}`, 'default', 5200);
+        this.ui.toast(
+          `Experience awarded · +${Math.round((55 + reward.marks * 2) * this.progression.stats.xpBonus)} XP`,
+          'default',
+          3200,
+        );
         this.saveProgress();
       }),
       missions.on('chapterCompleted', () => {
@@ -635,6 +735,7 @@ export class Game {
         if (!ending) return;
         this.completed = true;
         this.pendingEnding = true;
+        this.progression.awardEnding(ending.id);
         this.audio.gateEnergised();
         this.ui.hud.banner(ending.title, ending.subtitle, 11000);
         this.ui.toast(ending.epitaph, 'accent', 11000);
@@ -661,27 +762,194 @@ export class Game {
     }
   }
 
+  /* ------------------------------------------------------------------ */
+  /* Progression                                                        */
+  /* ------------------------------------------------------------------ */
+
+  private bindProgressionEvents(): void {
+    this.disposeHandlers.push(
+      this.progression.on('change', ({ stats }) => this.applyProgression(stats)),
+      this.progression.on('levelUp', ({ level, skillPoints }) => {
+        this.audio.pickup();
+        if (this.state === 'playing') {
+          this.ui.hud.banner(`Level ${level}`, `${skillPoints} unspent skill points · press C`, 4600);
+          this.ui.toast(`Field record advanced to level ${level}`, 'accent', 4200);
+        }
+      }),
+      this.progression.on('abilityUnlocked', ({ name }) => {
+        if (this.state === 'playing') this.ui.toast(`Ability unlocked · ${name}`, 'accent', 4600);
+      }),
+      this.progression.on('saved', ({ ok, error }) => {
+        if (!ok) console.warn('[progression] save failed', error);
+      }),
+    );
+  }
+
+  private applyProgression(stats = this.progression.stats): void {
+    this.staminaMax = stats.maxStamina;
+    this.stamina = clamp(this.stamina, 0, this.staminaMax);
+    if (this.player) {
+      this.player.applyProgressionMovement({
+        moveSpeed: stats.moveSpeed,
+        jump: stats.jump,
+        waterSpeed: stats.waterSpeed,
+        doubleJump: this.progression.hasAbility('double-jump'),
+      });
+    }
+    this.resourceWorld?.apply(
+      this.progression.profile.gatheredNodes,
+      this.progression.hasAbility('survey-instinct'),
+    );
+    this.ui.hud.setProgression(
+      this.progression.profile.level,
+      this.progression.profile.xp,
+      stats.xpToNext,
+      stats.skillPoints,
+    );
+    this.ui.hud.setStamina(this.stamina, this.staminaMax);
+    if (this.ui.characterOpen) this.ui.refreshCharacter(this.progression.view());
+  }
+
+  /** Import progress made before the RPG layer existed (Chapter One saves). */
+  private syncProgressionFromWorld(): void {
+    if (!this.world) return;
+    for (const id of this.progress.value.collected) this.progression.awardShard(id);
+    for (const id of this.story.state.completed) this.progression.awardMission(id);
+    for (const id of this.story.worldView().solvedPuzzles) this.progression.awardPuzzle(id);
+    for (const id of this.story.state.readMemories) this.progression.awardMemory(id);
+    if (this.story.state.ending) this.progression.awardEnding(this.story.state.ending);
+  }
+
+  private toggleCharacter(): void {
+    if (this.ui.characterOpen) {
+      this.closeCharacter();
+      return;
+    }
+    if (this.state !== 'playing' || this.storyModal) return;
+    this.characterFromPause = false;
+    this.storyModal = true;
+    this.input.setEnabled(false);
+    this.input.exitPointerLock();
+    this.ui.hud.hidePrompt();
+    this.ui.showCharacter(this.progression.view());
+    this.audio.ui();
+  }
+
+  private openCharacterFromPause(): void {
+    if (this.state !== 'paused') return;
+    this.characterFromPause = true;
+    this.ui.hidePause();
+    this.ui.showCharacter(this.progression.view());
+    this.audio.ui();
+  }
+
+  private closeCharacter(): void {
+    const fromPause = this.characterFromPause;
+    this.characterFromPause = false;
+    this.ui.hideCharacter();
+    if (fromPause && this.state === 'paused') {
+      this.ui.showPause(this.pauseStats());
+      return;
+    }
+    this.leaveStoryModal();
+  }
+
+  private unlockSkill(id: string): void {
+    const result = this.progression.unlockSkill(id);
+    this.ui.toast(result.message, result.ok ? 'accent' : 'warn', 2800);
+    this.ui.characterFeedback(result.message, result.ok);
+    this.audio.ui();
+  }
+
+  private equipItem(id: string): void {
+    const result = this.progression.equipItem(id);
+    this.ui.toast(result.message, result.ok ? 'accent' : 'warn', 2600);
+    this.ui.characterFeedback(result.message, result.ok);
+    this.audio.ui();
+  }
+
+  private unequipItem(slot: Parameters<ProgressionSystem['unequipItem']>[0]): void {
+    const result = this.progression.unequipItem(slot);
+    this.ui.toast(result.message, result.ok ? 'accent' : 'warn', 2400);
+    this.ui.characterFeedback(result.message, result.ok);
+    this.audio.ui();
+  }
+
+  private upgradeItem(id: string): void {
+    const result = this.progression.upgradeEquipment(id);
+    this.ui.toast(result.message, result.ok ? 'accent' : 'warn', 2800);
+    this.ui.characterFeedback(result.message, result.ok);
+    if (result.ok) this.audio.pickup();
+    else this.audio.ui();
+  }
+
+  private craftItem(id: string): void {
+    const result = this.progression.craftEquipment(id);
+    this.ui.toast(result.message, result.ok ? 'accent' : 'warn', 3000);
+    this.ui.characterFeedback(result.message, result.ok);
+    if (result.ok) this.audio.pickup();
+    else this.audio.ui();
+  }
+
+  private pauseStats(): PauseStats {
+    return {
+      shards: this.world?.collectibles.collectedCount ?? 0,
+      total: this.world?.collectibles.total ?? SHARD_LOCATIONS.length,
+      elapsed: formatDuration(this.elapsed),
+      area: this.world?.getAreaName(this.player?.position.x ?? 0, this.player?.position.z ?? 0) ?? 'Mirrorwater',
+    };
+  }
+
   private notifyStory(notices: readonly StoryNotice[]): void {
     for (const notice of notices) {
       this.ui.toast(notice.text, notice.kind, notice.kind === 'accent' ? 5200 : 3600);
     }
   }
 
+  private nearestInteraction():
+    | { kind: 'story'; value: NonNullable<ReturnType<StoryWorld['nearestInteraction']>> }
+    | { kind: 'resource'; value: ResourceInteraction }
+    | null {
+    if (!this.player || !this.storyWorld) return null;
+    const story = this.storyWorld.nearestInteraction(this.player.position);
+    const resource = this.resourceWorld?.nearestInteraction(this.player.position) ?? null;
+    if (story && (!resource || story.distance <= resource.distance)) return { kind: 'story', value: story };
+    if (resource) return { kind: 'resource', value: resource };
+    return null;
+  }
+
   private interactNearest(): void {
     if (this.state !== 'playing' || !this.player || !this.storyWorld || this.storyModal) return;
-    const nearest = this.storyWorld.nearestInteraction(this.player.position);
+    const nearest = this.nearestInteraction();
     if (!nearest) return;
-    if (nearest.kind === 'npc') {
-      const session = this.story.beginNpcDialogue(nearest.id);
+    if (nearest.kind === 'resource') {
+      const result = this.progression.collectNode(nearest.value.id);
+      if (!result.ok) {
+        this.ui.toast(result.message, 'warn', 2400);
+        return;
+      }
+      this.audio.pickup();
+      this.ui.toast(result.message, 'accent', 3200);
+      this.saveProgress();
+      return;
+    }
+    const storyInteraction = nearest.value;
+    if (storyInteraction.kind === 'npc') {
+      const session = this.story.beginNpcDialogue(storyInteraction.id);
       if (!session) {
-        this.ui.toast(`${this.story.npcName(nearest.id)} has nothing more to say.`, 'default', 2400);
+        this.ui.toast(`${this.story.npcName(storyInteraction.id)} has nothing more to say.`, 'default', 2400);
         return;
       }
       this.openDialogue(session);
       return;
     }
-    const result = this.story.interact(nearest.id);
+    const result = this.story.interact(storyInteraction.id);
     if (result.type === 'dialogue') {
+      if (result.session.id.startsWith('memory:')) {
+        const memoryId = result.session.id.slice('memory:'.length);
+        const award = this.progression.awardMemory(memoryId);
+        if (award.ok) this.ui.toast(award.message, 'accent', 3000);
+      }
       this.openDialogue(result.session);
     } else if (result.type === 'puzzle') {
       this.openPuzzle(result.puzzle);
@@ -760,6 +1028,7 @@ export class Game {
     if (!this.activePuzzle || this.activePuzzle.id !== puzzle.id) return;
     const notices = this.story.solvePuzzle(puzzle.id);
     this.notifyStory(notices);
+    this.progression.awardPuzzle(puzzle.id);
     this.audio.gateEnergised();
     this.syncStoryState();
     this.saveProgress();
@@ -802,7 +1071,8 @@ export class Game {
   }
 
   private scanRange(): number {
-    return this.story.hasUpgrade('survey-lens') ? 70 : 58;
+    const base = this.progression.stats.scanRange;
+    return this.story.hasUpgrade('survey-lens') ? base + 12 : base;
   }
 
   private scanCreature(): void {
@@ -819,12 +1089,17 @@ export class Game {
     }
     this.ui.hud.showScan(report);
     this.story.scan(report.kind);
+    const xp = this.progression.recordScan(report.kind);
+    const sample = xp.first ? this.progression.scanSampleId(report.kind) : null;
+    if (sample) this.progression.addResource(sample, 1);
     this.audio.scan();
     if (report.firstScan) {
       this.ui.toast(`${report.name} catalogued · ${report.scanned}/${report.total} species`, 'accent', 5000);
     } else {
       this.ui.toast(`${report.name} re-scanned · ${report.weakness.label}`, 'default', 3000);
     }
+    if (xp.first) this.ui.toast(xp.result.message, 'accent', 3400);
+    if (sample) this.ui.toast(`Scan sample recovered · +1 resource`, 'default', 3200);
   }
 
   private endEncounterCinematic(): void {
@@ -836,6 +1111,8 @@ export class Game {
   private onShardCollected(shard: EchoShard): void {
     if (!this.world) return;
     this.progress.addShard(shard.id);
+    const award = this.progression.awardShard(shard.id);
+    if (award.ok) this.ui.toast(award.message, 'accent', 3600);
     this.saveProgress();
     this.audio.pickup();
     this.ui.hud.setShards(this.world.collectibles.collectedCount, this.world.collectibles.total);
@@ -854,7 +1131,10 @@ export class Game {
 
   private triggerPulse(): void {
     if (this.state !== 'playing' || !this.player || !this.world || this.pulseCooldown > 0) return;
-    this.pulseCooldown = this.story.hasUpgrade('resonance-capacitor') ? 2.2 : 3.2;
+    this.pulseCooldown = Math.max(
+      1.2,
+      this.progression.stats.pulseCooldown - (this.story.hasUpgrade('resonance-capacitor') ? 1 : 0),
+    );
     this.audio.pulse();
     const position = this.player.position;
     this.world.atmosphere.triggerPulse(position.x, position.y, position.z);
@@ -912,7 +1192,11 @@ export class Game {
       collected: this.progress.value.collected.length,
       total: SHARD_LOCATIONS.length,
       playtime: this.progress.value.playtime,
-      hasProgress: this.progress.hasProgress || this.story.missions.hasProgress,
+      hasProgress:
+        this.progress.hasProgress ||
+        this.story.missions.hasProgress ||
+        this.progression.profile.statistics.xpEarned > 0 ||
+        this.progression.profile.level > 1,
       mission: {
         title: this.story.missionTitle(),
         objective: this.story.objectiveText(),
@@ -1017,6 +1301,12 @@ export class Game {
     this.progress.setPlaytime(this.elapsed);
     this.progress.save();
     this.story.missions.save();
+    if (this.travelDistance > 0.1) {
+      this.progression.recordTravel(this.travelDistance, this.travelTime);
+      this.travelDistance = 0;
+      this.travelTime = 0;
+    }
+    void this.progression.flushSave();
   }
 
   private bindGlobalErrorHandling(): void {
@@ -1103,6 +1393,8 @@ export class Game {
     this.disposeHandlers.length = 0;
     this.input.dispose();
     this.storyWorld?.dispose();
+    this.resourceWorld?.dispose();
+    this.progression.dispose();
     this.world?.dispose();
     this.ui.dispose();
     this.engine?.destroy();
