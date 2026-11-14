@@ -19,6 +19,13 @@ export default defineConfig({
     sourcemap: false,
     chunkSizeWarningLimit: 4096,
     assetsInlineLimit: 0,
+    rollupOptions: {
+      output: {
+        // Keep the engine in its own cacheable chunk; gameplay changes should
+        // not invalidate the ~2.5 MB PlayCanvas payload.
+        manualChunks: { playcanvas: ['playcanvas'] },
+      },
+    },
   },
   optimizeDeps: {
     include: ['playcanvas'],

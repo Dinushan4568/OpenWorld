@@ -1,4 +1,4 @@
-import { Color, Entity, type AppBase } from 'playcanvas';
+import { Color, Entity, SHADOW_PCF3_32F, SHADOW_PCF5_32F, type AppBase } from 'playcanvas';
 import { WORLD, type QualityProfile } from '../config';
 import { clamp } from '../util/math';
 
@@ -47,10 +47,11 @@ export class Lighting {
       castShadows: profile.shadows,
       shadowResolution: profile.shadowResolution,
       shadowDistance: profile.shadowDistance,
-      shadowBias: 0.18,
-      normalOffsetBias: 0.06,
-      numCascades: 3,
-      cascadeDistribution: 0.55,
+      shadowBias: 0.14,
+      normalOffsetBias: 0.05,
+      shadowType: profile.shadowFilter === 'pcf5' ? SHADOW_PCF5_32F : SHADOW_PCF3_32F,
+      numCascades: profile.shadowCascades,
+      cascadeDistribution: 0.52,
     });
     this.root.addChild(this.sun);
 
@@ -94,9 +95,14 @@ export class Lighting {
   }
 
   applyQuality(profile: QualityProfile): void {
-    this.sun.light!.castShadows = profile.shadows;
-    this.sun.light!.shadowResolution = profile.shadowResolution;
-    this.sun.light!.shadowDistance = profile.shadowDistance;
+    const light = this.sun.light!;
+    light.castShadows = profile.shadows;
+    light.shadowResolution = profile.shadowResolution;
+    light.shadowDistance = profile.shadowDistance;
+    light.numCascades = profile.shadowCascades;
+    light.shadowType = profile.shadowFilter === 'pcf5' ? SHADOW_PCF5_32F : SHADOW_PCF3_32F;
+    light.shadowBias = 0.14;
+    light.normalOffsetBias = 0.05;
   }
 
   /** Applied once per frame by the day/night driver. */

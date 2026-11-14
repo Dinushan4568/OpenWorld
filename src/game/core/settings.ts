@@ -7,6 +7,7 @@ export type TouchMode = 'auto' | 'always' | 'never';
 
 export interface Settings {
   quality: QualityPreset;
+  adaptiveResolution: boolean;
   fov: number;
   sensitivity: number;
   invertY: boolean;
@@ -22,6 +23,7 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   quality: 'high',
+  adaptiveResolution: true,
   fov: 62,
   sensitivity: 1,
   invertY: false,
@@ -52,6 +54,7 @@ export function sanitizeSettings(input: unknown, fallback: Settings = DEFAULT_SE
 
   return {
     quality: QUALITY_IDS.includes(raw.quality as QualityPreset) ? (raw.quality as QualityPreset) : fallback.quality,
+    adaptiveResolution: bool(raw.adaptiveResolution, fallback.adaptiveResolution),
     fov: num(raw.fov, fallback.fov, 50, 92),
     sensitivity: num(raw.sensitivity, fallback.sensitivity, 0.25, 3),
     invertY: bool(raw.invertY, fallback.invertY),

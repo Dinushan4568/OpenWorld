@@ -1,16 +1,22 @@
 import {
+  BoundingBox,
   CULLFACE_NONE,
   Color,
   Entity,
+  Mat4,
   Mesh,
   MeshInstance,
+  Quat,
   StandardMaterial,
+  Vec3,
+  VertexBuffer,
+  VertexFormat,
   type AppBase,
 } from 'playcanvas';
 import type { ModelName, QualityProfile } from '../config';
 import type { AssetManager } from '../core/AssetManager';
 import { WORLD } from '../config';
-import { clamp, createRandom, distance2D, randomRange } from '../util/math';
+import { clamp, createRandom, distance2D, lerp, randomRange } from '../util/math';
 import { addTriangle, buildMesh, computeNormals, createMeshData, type MeshData } from '../util/meshBuilder';
 import type { CollisionWorld, SolidCollider } from './collision';
 import { heightAt, isScatterAllowed, normalAt, regionAtPoint, riverDistance } from './heightfield';
@@ -34,7 +40,9 @@ interface ChunkRecord {
   lod: ChunkLod;
   root: Entity;
   meshes: Mesh[];
+  instanceBuffers: VertexBuffer[];
   colliders: number;
+  instances: number;
 }
 
 export interface ChunkStats {
@@ -45,6 +53,24 @@ export interface ChunkStats {
   colliders: number;
   loads: number;
   units: number;
+  instances: number;
+  batches: number;
+  pending: number;
+}
+
+interface InstanceItem {
+  x: number;
+  y: number;
+  z: number;
+  scale: number;
+  rotation: number;
+  tilt: number;
+}
+
+interface InstanceBatch {
+  model: ModelName;
+  shadows: boolean;
+  items: InstanceItem[];
 }
 
 interface Placement {
@@ -59,6 +85,12 @@ interface Placement {
   /** Box colliders swap their extents when rotated a quarter turn. */
   quarterTurn?: boolean;
 }
+
+const GRASS_PALETTES: ReadonlyArray<{ base: [number, number, number]; tip: [number, number, number] }> = [
+  { base: [0.05, 0.11, 0.05], tip: [0.28, 0.38, 0.16] },
+  { base: [0.05, 0.12, 0.08], tip: [0.22, 0.44, 0.26] },
+  { base: [0.07, 0.12, 0.06], tip: [0.4, 0.38, 0.18] },
+];
 
 const HERO_SITES: ReadonlyArray<{ x: number; z: number; radius: number }> = [
   { x: WORLD.spawn.x, z: WORLD.spawn.z, radius: 12 },
@@ -85,7 +117,18 @@ function nearHeroSite(x: number, z: number): boolean {
  */
 export class ChunkManager {
   readonly root: Entity;
-  readonly stats: ChunkStats = { loaded: 0, near: 0, mid: 0, entities: 0, colliders: 0, loads: 0, units: 0 };
+  readonly stats: ChunkStats = {
+    loaded: 0,
+    near: 0,
+    mid: 0,
+    entities: 0,
+    colliders: 0,
+    loads: 0,
+    units: 0,
+    instances: 0,
+    batches: 0,
+    pending: 0,
+  };
   readonly config: StreamingConfig;
 
   private readonly app: AppBase;
@@ -94,9 +137,14 @@ export class ChunkManager {
   private readonly collision: CollisionWorld | null;
   private readonly chunks = new Map<string, ChunkRecord>();
   private readonly grassMaterial: StandardMaterial;
+  private readonly grassPatches: Mesh[] = [];
   private readonly flowerMaterial: StandardMaterial;
   private readonly silhouetteMaterial: StandardMaterial;
   private readonly buffer = { x: Number.NaN, z: Number.NaN };
+  /** Work is time-sliced so a stream-in never blocks a whole frame. */
+  private readonly queue: Array<{ decision: ChunkDecision; upgrade: boolean }> = [];
+  private readonly queued = new Set<string>();
+  private readonly streamBudgetMs = 4;
 
   constructor(
     app: AppBase,
@@ -122,6 +170,9 @@ export class ChunkManager {
     this.grassMaterial.cull = CULLFACE_NONE;
     this.grassMaterial.useFog = true;
     this.grassMaterial.update();
+    for (let i = 0; i < GRASS_PALETTES.length; i++) {
+      this.grassPatches.push(this.buildGrassPatch(GRASS_PALETTES[i], i));
+    }
 
     this.flowerMaterial = new StandardMaterial();
     this.flowerMaterial.name = 'chunk-wildflowers';
@@ -182,31 +233,53 @@ export class ChunkManager {
   }
 
   update(x: number, z: number): void {
-    if (Number.isFinite(this.buffer.x) && distance2D(x, z, this.buffer.x, this.buffer.z) < 3) {
-      this.refreshStats();
-      return;
-    }
-    this.buffer.x = x;
-    this.buffer.z = z;
+    if (!Number.isFinite(this.buffer.x) || distance2D(x, z, this.buffer.x, this.buffer.z) >= 3) {
+      this.buffer.x = x;
+      this.buffer.z = z;
 
-    const resident = new Map<string, ChunkLod>();
-    for (const [key, record] of this.chunks) resident.set(key, record.lod);
-    const plan = planStreaming(x, z, resident, this.config);
+      const resident = new Map<string, ChunkLod>();
+      for (const [key, record] of this.chunks) resident.set(key, record.lod);
+      const plan = planStreaming(x, z, resident, this.config);
 
-    for (const coord of plan.unload) {
-      this.destroyChunk(coord.key);
+      for (const coord of plan.unload) this.destroyChunk(coord.key);
+      for (const decision of plan.upgrade) this.enqueue(decision, true);
+      for (const decision of plan.load) this.enqueue(decision, false);
     }
-    for (const decision of plan.upgrade) {
-      if (this.chunks.has(decision.key)) {
-        this.destroyChunk(decision.key);
-        this.createChunk(decision);
-      }
-    }
-    for (const decision of plan.load) {
-      if (this.chunks.size > 170) break;
-      if (!this.chunks.has(decision.key)) this.createChunk(decision);
-    }
+    this.processQueue(x, z);
     this.refreshStats();
+  }
+
+  private enqueue(decision: ChunkDecision, upgrade: boolean): void {
+    if (this.queued.has(decision.key)) return;
+    this.queued.add(decision.key);
+    this.queue.push({ decision, upgrade });
+    // Old decisions from a rapid journey are dropped before they become resident.
+    if (this.queue.length > 96) {
+      const dropped = this.queue.splice(0, this.queue.length - 96);
+      for (const entry of dropped) this.queued.delete(entry.decision.key);
+    }
+  }
+
+  private processQueue(x: number, z: number): void {
+    if (!this.queue.length) return;
+    const started = performance.now();
+    while (this.queue.length) {
+      if (this.chunks.size > 170) break;
+      if (performance.now() - started >= this.streamBudgetMs) break;
+      const entry = this.queue.shift()!;
+      this.queued.delete(entry.decision.key);
+      const decision = entry.decision;
+      if (distance2D(x, z, decision.centerX, decision.centerZ) > this.config.midRadius + CHUNK_SIZE) {
+        continue;
+      }
+      if (this.chunks.has(decision.key)) {
+        if (!entry.upgrade) continue;
+        const record = this.chunks.get(decision.key);
+        if (!record || record.lod === 'near') continue;
+        this.destroyChunk(decision.key);
+      }
+      this.createChunk(decision);
+    }
   }
 
   /** Night-time glow for wildflowers. */
@@ -225,7 +298,9 @@ export class ChunkManager {
       lod: decision.lod,
       root,
       meshes: [],
+      instanceBuffers: [],
       colliders: 0,
+      instances: 0,
     };
     const rng = createRandom(chunkSeed(decision.ix, decision.iz, decision.lod === 'near' ? 11 : 13));
     const colliders: Omit<SolidCollider, 'group'>[] = [];
@@ -248,6 +323,8 @@ export class ChunkManager {
     if (!record) return;
     for (const mesh of record.meshes) mesh.destroy();
     record.root.destroy();
+    for (const buffer of record.instanceBuffers) buffer.destroy();
+    record.instanceBuffers.length = 0;
     this.collision?.removeGroup(key);
     this.chunks.delete(key);
   }
@@ -260,16 +337,21 @@ export class ChunkManager {
     stats.entities = 0;
     stats.colliders = 0;
     stats.loads = 0;
+    stats.instances = 0;
+    stats.batches = 0;
     let units = 0;
     for (const record of this.chunks.values()) {
       if (record.lod === 'near') stats.near++;
       else stats.mid++;
       stats.colliders += record.colliders;
       units += record.root.children.length;
+      stats.instances += record.instances;
     }
     stats.entities = units;
     stats.loads = stats.near + stats.mid;
     stats.units = units;
+    stats.batches = stats.entities;
+    stats.pending = this.queue.length;
   }
 
   /* ---------------------------------------------------------------------- */
@@ -287,25 +369,46 @@ export class ChunkManager {
     const centreX = decision.centerX;
     const centreZ = decision.centerZ;
     const region = regionAtPoint(centreX, centreZ);
+    const batches = new Map<string, InstanceBatch>();
 
     const place = (placement: Placement): void => {
       const y = heightAt(placement.x, placement.z);
-      let entity = this.assets.instantiate(placement.model, {
-        castShadows: placement.shadows ?? true,
-        receiveShadows: true,
-      });
-      if (!entity) entity = this.assets.createFallback(placement.model);
       const sink = placement.sink ?? 0.2;
       const scale = placement.scale;
-      entity.setPosition(placement.x, y - scale * sink, placement.z);
+      const baseY = y - scale * sink;
+      this.registerSolid(placement, baseY, colliders);
+
+      const renderable = this.assets.getRenderable(placement.model);
+      if (renderable) {
+        const shadows = placement.shadows ?? true;
+        const key = `${placement.model}:${shadows ? 's' : 'n'}`;
+        let batch = batches.get(key);
+        if (!batch) {
+          batch = { model: placement.model, shadows, items: [] };
+          batches.set(key, batch);
+        }
+        batch.items.push({
+          x: placement.x,
+          y: baseY,
+          z: placement.z,
+          scale,
+          rotation: placement.rotation,
+          tilt: placement.tilt ?? 0,
+        });
+        return;
+      }
+
+      // A failed GLB falls back to a primitive entity so the valley remains populated.
+      const entity = this.assets.createFallback(placement.model);
+      entity.setPosition(placement.x, baseY, placement.z);
       entity.setEulerAngles((placement.tilt ?? 0) * (180 / Math.PI), placement.rotation, 0);
       entity.setLocalScale(scale, scale, scale);
       entity.name = `${placement.model}:${record.key}`;
       record.root.addChild(entity);
-      this.registerSolid(placement, y - scale * sink, colliders);
     };
 
-    // Ground cover and wildflowers are merged per chunk into one draw call each.
+    // Grass tufts share three base meshes and are instanced per chunk; the
+    // handful of wildflowers stay merged into a tiny per-chunk mesh.
     this.buildGroundCover(record, decision, rng, region);
 
     if (region === 'city') {
@@ -341,6 +444,7 @@ export class ChunkManager {
         place({ model: 'monolith_spire', x, z, scale: randomRange(rng, 0.6, 1.3), rotation: rng() * 360, tilt: 0.05 });
       }
     }
+    this.buildInstancedBatches(record, batches);
     void centreZ;
   }
 
@@ -501,6 +605,75 @@ export class ChunkManager {
     }
   }
 
+  /**
+   * Hardware instancing: one mesh instance per model/shadow combination per
+   * chunk. A forest chunk that previously created ~60 prop entities now draws
+   * as a handful of instanced calls, with a custom AABB so frustum culling
+   * still rejects off-screen batches.
+   */
+  private buildInstancedBatches(record: ChunkRecord, batches: Map<string, InstanceBatch>): void {
+    if (!batches.size) return;
+    const matrix = new Mat4();
+    const rotation = new Quat();
+    const position = new Vec3();
+    const scaleVec = new Vec3();
+    const format = VertexFormat.getDefaultInstancingFormat(this.app.graphicsDevice);
+
+    for (const batch of batches.values()) {
+      const renderable = this.assets.getRenderable(batch.model);
+      if (!renderable) continue;
+      const count = batch.items.length;
+      const data = new Float32Array(count * 16);
+      const local = renderable.mesh.aabb;
+      const extents = local?.halfExtents ?? null;
+      const centre = local?.center ?? null;
+      const radius = extents ? Math.hypot(extents.x, extents.z) : 2;
+      const low = extents ? extents.y : 1;
+      let minX = Infinity;
+      let minY = Infinity;
+      let minZ = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      let maxZ = -Infinity;
+
+      for (let i = 0; i < count; i++) {
+        const item = batch.items[i];
+        rotation.setFromEulerAngles(item.tilt * (180 / Math.PI), item.rotation, 0);
+        position.set(item.x, item.y, item.z);
+        scaleVec.set(item.scale, item.scale, item.scale);
+        matrix.setTRS(position, rotation, scaleVec);
+        data.set(matrix.data, i * 16);
+        const r = radius * item.scale;
+        const minItemY = item.y + ((centre?.y ?? 0) - low) * item.scale;
+        const maxItemY = item.y + ((centre?.y ?? 0) + low) * item.scale;
+        if (item.x - r < minX) minX = item.x - r;
+        if (item.z - r < minZ) minZ = item.z - r;
+        if (item.x + r > maxX) maxX = item.x + r;
+        if (item.z + r > maxZ) maxZ = item.z + r;
+        if (minItemY < minY) minY = minItemY;
+        if (maxItemY > maxY) maxY = maxItemY;
+      }
+
+      const vertexBuffer = new VertexBuffer(this.app.graphicsDevice, format, count, { data });
+      const instance = new MeshInstance(renderable.mesh, renderable.material);
+      instance.setInstancing(vertexBuffer, true);
+      instance.setCustomAabb(
+        new BoundingBox(
+          new Vec3((minX + maxX) * 0.5, (minY + maxY) * 0.5, (minZ + maxZ) * 0.5),
+          new Vec3((maxX - minX) * 0.5, (maxY - minY) * 0.5, (maxZ - minZ) * 0.5),
+        ),
+      );
+      const entity = new Entity(`instanced:${batch.model}:${record.key}`);
+      entity.addComponent('render');
+      entity.render!.meshInstances = [instance];
+      entity.render!.castShadows = batch.shadows;
+      entity.render!.receiveShadows = true;
+      record.root.addChild(entity);
+      record.instanceBuffers.push(vertexBuffer);
+      record.instances += count;
+    }
+  }
+
   private registerSolid(placement: Placement, baseY: number, colliders: Omit<SolidCollider, 'group'>[]): void {
     const solid = PROP_SOLIDS[placement.model];
     if (!solid) return;
@@ -639,56 +812,125 @@ export class ChunkManager {
   /* Ground cover                                                           */
   /* ---------------------------------------------------------------------- */
 
-  private buildGroundCover(record: ChunkRecord, decision: ChunkDecision, rng: () => number, region: RegionId): void {
-    const blades = region === 'city' ? 90 : region === 'forest' ? 700 : region === 'river' ? 460 : 540;
-    const count = Math.round(blades * this.profile.scatterDensity);
+  private buildGrassPatch(palette: { base: [number, number, number]; tip: [number, number, number] }, index: number): Mesh {
     const data = createMeshData();
+    const rand = createRandom(72000 + index * 17);
+    // A shared six-blade tuft, instanced across the valley. One geometry for
+    // thousands of tufts keeps CPU-side mesh construction out of the frame.
+    for (let blade = 0; blade < 6; blade++) {
+      const angle = (blade / 6) * Math.PI * 2 + rand() * 0.35;
+      this.addBlade(
+        data,
+        randomRange(rand, -0.34, 0.34),
+        0,
+        randomRange(rand, -0.34, 0.34),
+        randomRange(rand, 0.42, 0.82),
+        palette,
+        angle,
+        randomRange(rand, -0.09, 0.09),
+      );
+    }
+    computeNormals(data);
+    return buildMesh(this.app.graphicsDevice, data, `grass-patch-${index}`);
+  }
+
+  /** Bilinear height/slope cache for a chunk; saves thousands of noise samples. */
+  private buildHeightGrid(
+    minX: number,
+    minZ: number,
+    size: number,
+    resolution = 16,
+  ): { height: (x: number, z: number) => number; slope: (x: number, z: number) => number } {
+    const cols = resolution + 1;
+    const step = size / resolution;
+    const heights = new Float32Array(cols * cols);
+    for (let iz = 0; iz <= resolution; iz++) {
+      for (let ix = 0; ix <= resolution; ix++) {
+        heights[iz * cols + ix] = heightAt(minX + ix * step, minZ + iz * step);
+      }
+    }
+    const height = (x: number, z: number): number => {
+      const gx = clamp((x - minX) / step, 0, resolution - 0.0001);
+      const gz = clamp((z - minZ) / step, 0, resolution - 0.0001);
+      const ix = Math.floor(gx);
+      const iz = Math.floor(gz);
+      const fx = gx - ix;
+      const fz = gz - iz;
+      const a = heights[iz * cols + ix];
+      const b = heights[iz * cols + ix + 1];
+      const c = heights[(iz + 1) * cols + ix];
+      const d = heights[(iz + 1) * cols + ix + 1];
+      return lerp(lerp(a, b, fx), lerp(c, d, fx), fz);
+    };
+    const slope = (x: number, z: number): number => {
+      const gx = Math.max(0, Math.min(resolution - 1, Math.round((x - minX) / step)));
+      const gz = Math.max(0, Math.min(resolution - 1, Math.round((z - minZ) / step)));
+      const hL = heights[gz * cols + Math.max(0, gx - 1)];
+      const hR = heights[gz * cols + Math.min(resolution, gx + 1)];
+      const hD = heights[Math.max(0, gz - 1) * cols + gx];
+      const hU = heights[Math.min(resolution, gz + 1) * cols + gx];
+      const nx = hL - hR;
+      const ny = 2 * step;
+      const nz = hD - hU;
+      return ny / (Math.hypot(nx, ny, nz) || 1);
+    };
+    return { height, slope };
+  }
+
+  private buildGroundCover(record: ChunkRecord, decision: ChunkDecision, rng: () => number, region: RegionId): void {
+    const tufts = region === 'city' ? 90 : region === 'forest' ? 620 : region === 'river' ? 420 : 500;
+    const count = Math.round(tufts * this.profile.scatterDensity);
     const minX = decision.ix * CHUNK_SIZE;
     const minZ = decision.iz * CHUNK_SIZE;
-    const palettes: Array<{ base: [number, number, number]; tip: [number, number, number] }> = [
-      { base: [0.05, 0.11, 0.05], tip: [0.28, 0.38, 0.16] },
-      { base: [0.05, 0.12, 0.08], tip: [0.22, 0.44, 0.26] },
-      { base: [0.07, 0.12, 0.06], tip: [0.4, 0.38, 0.18] },
-    ];
+    const grid = this.buildHeightGrid(minX, minZ, CHUNK_SIZE);
+    const groups: number[][] = [[], [], []];
+    const matrix = new Mat4();
+    const rotation = new Quat();
+    const position = new Vec3();
+    const scale = new Vec3();
+    let minGround = Infinity;
+    let maxGround = -Infinity;
 
     for (let i = 0; i < count; i++) {
       const x = minX + rng() * CHUNK_SIZE;
       const z = minZ + rng() * CHUNK_SIZE;
-      const y = heightAt(x, z);
+      const y = grid.height(x, z);
       if (y < WORLD.waterLevel + 0.35) continue;
-      if (normalAt(x, z)[1] < 0.62) continue;
+      if (grid.slope(x, z) < 0.62) continue;
       if (riverDistance(x, z) < 5) continue;
-      const palette = palettes[Math.floor(rng() * palettes.length)];
-      const tufts = 2;
-      for (let t = 0; t < tufts; t++) {
-        const ox = randomRange(rng, -0.5, 0.5);
-        const oz = randomRange(rng, -0.5, 0.5);
-        const gy = heightAt(x + ox, z + oz);
-        for (let b = 0; b < 3; b++) {
-          this.addBlade(
-            data,
-            x + ox + randomRange(rng, -0.2, 0.2),
-            gy - 0.05,
-            z + oz + randomRange(rng, -0.2, 0.2),
-            randomRange(rng, 0.28, 0.8),
-            palette,
-            rng() * Math.PI,
-            randomRange(rng, -0.25, 0.25),
-          );
-        }
-      }
+      const palette = Math.floor(rng() * groups.length);
+      const s = randomRange(rng, 0.7, 1.3);
+      position.set(x, y - 0.05, z);
+      rotation.setFromEulerAngles(0, rng() * 360, 0);
+      scale.set(s, s, s);
+      matrix.setTRS(position, rotation, scale);
+      for (let value = 0; value < 16; value++) groups[palette].push(matrix.data[value]);
+      if (y < minGround) minGround = y;
+      if (y > maxGround) maxGround = y;
     }
 
-    if (data.indices.length) {
-      computeNormals(data);
-      const mesh = buildMesh(this.app.graphicsDevice, data, `ground-cover-${record.key}`);
-      record.meshes.push(mesh);
-      const entity = new Entity(`ground-cover:${record.key}`);
+    for (let palette = 0; palette < groups.length; palette++) {
+      const values = groups[palette];
+      if (!values.length) continue;
+      const data = new Float32Array(values);
+      const instanceCount = data.length / 16;
+      const buffer = new VertexBuffer(this.app.graphicsDevice, VertexFormat.getDefaultInstancingFormat(this.app.graphicsDevice), instanceCount, { data });
+      const instance = new MeshInstance(this.grassPatches[palette], this.grassMaterial);
+      instance.setInstancing(buffer, true);
+      instance.setCustomAabb(
+        new BoundingBox(
+          new Vec3(minX + CHUNK_SIZE * 0.5, (minGround + maxGround) * 0.5, minZ + CHUNK_SIZE * 0.5),
+          new Vec3(CHUNK_SIZE * 0.55, (maxGround - minGround) * 0.5 + 2, CHUNK_SIZE * 0.55),
+        ),
+      );
+      const entity = new Entity(`instanced-grass:${palette}:${record.key}`);
       entity.addComponent('render');
-      entity.render!.meshInstances = [new MeshInstance(mesh, this.grassMaterial)];
+      entity.render!.meshInstances = [instance];
       entity.render!.castShadows = false;
       entity.render!.receiveShadows = false;
       record.root.addChild(entity);
+      record.instanceBuffers.push(buffer);
+      record.instances += instanceCount;
     }
 
     // Wildflowers: a handful of glowing tips, denser in the forest.
@@ -697,9 +939,9 @@ export class ChunkManager {
     for (let i = 0; i < flowers; i++) {
       const x = minX + rng() * CHUNK_SIZE;
       const z = minZ + rng() * CHUNK_SIZE;
-      const y = heightAt(x, z);
+      const y = grid.height(x, z);
       if (y < WORLD.waterLevel + 0.5) continue;
-      if (normalAt(x, z)[1] < 0.68) continue;
+      if (grid.slope(x, z) < 0.68) continue;
       if (nearHeroSite(x, z)) continue;
       const size = randomRange(rng, 0.05, 0.11);
       const height = randomRange(rng, 0.25, 0.55);
@@ -766,6 +1008,8 @@ export class ChunkManager {
 
   dispose(): void {
     for (const key of Array.from(this.chunks.keys())) this.destroyChunk(key);
+    for (const mesh of this.grassPatches) mesh.destroy();
+    this.grassPatches.length = 0;
     this.grassMaterial.destroy();
     this.flowerMaterial.destroy();
     this.silhouetteMaterial.destroy();

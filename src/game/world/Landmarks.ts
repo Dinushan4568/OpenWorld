@@ -27,6 +27,7 @@ export class Landmarks {
   private readonly materials: StandardMaterial[] = [];
   private readonly ownMeshes: Mesh[] = [];
   private readonly beamMaterial: StandardMaterial;
+  private readonly beamTexture: ReturnType<typeof createTexture>;
   private readonly runeMaterials: StandardMaterial[] = [];
   private readonly crystals: Entity[] = [];
   private gateRuneMaterial: StandardMaterial | null = null;
@@ -45,6 +46,7 @@ export class Landmarks {
       mipmaps: false,
       name: 'gate-beam',
     });
+    this.beamTexture = beamTexture;
     this.beamMaterial = new StandardMaterial();
     this.beamMaterial.name = 'gate-beam-material';
     this.beamMaterial.diffuse = new Color(0.45, 1, 0.9, 1);
@@ -371,6 +373,7 @@ export class Landmarks {
   destroy(): void {
     for (const mesh of this.ownMeshes) mesh.destroy();
     for (const material of this.materials) material.destroy();
+    this.beamTexture.destroy();
     this.root.destroy();
   }
 }

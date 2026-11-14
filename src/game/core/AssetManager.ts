@@ -5,6 +5,9 @@ import {
   type AppBase,
   type Asset,
   type ContainerResource,
+  type Material,
+  type Mesh,
+  type RenderComponent,
 } from 'playcanvas';
 import { MODEL_FILES, MODEL_URLS, type ModelName } from '../config';
 
@@ -31,6 +34,13 @@ export interface AssetLoadResult {
 const MODEL_NAMES = Object.keys(MODEL_FILES) as ModelName[];
 const MAX_ATTEMPTS = 2;
 const LOAD_TIMEOUT = 20000;
+/** Small enough to keep the main thread responsive while four GLBs decode. */
+const LOAD_CONCURRENCY = 4;
+
+export interface Renderable {
+  mesh: Mesh;
+  material: Material;
+}
 
 /**
  * Loads the glTF/GLB prop library with progress, retries and per-asset isolation.
@@ -41,6 +51,7 @@ export class AssetManager {
   private readonly containers = new Map<ModelName, ContainerResource>();
   private readonly failures = new Map<ModelName, string>();
   private readonly materials = new Map<string, StandardMaterial>();
+  private readonly renderables = new Map<ModelName, Renderable | null>();
 
   constructor(app: AppBase) {
     this.app = app;
@@ -72,20 +83,29 @@ export class AssetManager {
       });
     };
 
-    for (const name of MODEL_NAMES) {
-      try {
-        const resource = await this.loadContainer(name);
-        this.containers.set(name, resource);
-        this.failures.delete(name);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        failures.push({ name, message, attempts: MAX_ATTEMPTS });
-        this.failures.set(name, message);
-        console.warn(`[assets] "${name}" failed to load — using a procedural stand-in.`, error);
+    let next = 0;
+    const worker = async (): Promise<void> => {
+      while (true) {
+        const index = next++;
+        if (index >= MODEL_NAMES.length) return;
+        const name = MODEL_NAMES[index];
+        try {
+          const resource = await this.loadContainer(name);
+          this.containers.set(name, resource);
+          this.failures.delete(name);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          failures.push({ name, message, attempts: MAX_ATTEMPTS });
+          this.failures.set(name, message);
+          console.warn(`[assets] "${name}" failed to load — using a procedural stand-in.`, error);
+        }
+        loaded += 1;
+        report(name);
       }
-      loaded += 1;
-      report(name);
-    }
+    };
+    await Promise.all(
+      Array.from({ length: Math.min(LOAD_CONCURRENCY, MODEL_NAMES.length) }, () => worker()),
+    );
 
     return {
       failures,
@@ -147,6 +167,32 @@ export class AssetManager {
       console.warn(`[assets] could not instantiate "${name}"`, error);
       return null;
     }
+  }
+
+  /**
+   * Shared mesh/material pair for hardware-instanced scatter. Extracting this
+   * once per model lets a chunk draw hundreds of ferns, rocks or trees in a
+   * handful of instanced batches instead of one entity per prop.
+   */
+  getRenderable(name: ModelName): Renderable | null {
+    if (this.renderables.has(name)) return this.renderables.get(name) ?? null;
+    const entity = this.instantiate(name, { castShadows: false, receiveShadows: false });
+    if (!entity) {
+      this.renderables.set(name, null);
+      return null;
+    }
+    const rendered = entity.findComponents('render') as RenderComponent[];
+    let result: Renderable | null = null;
+    for (const component of rendered) {
+      const instance = component.meshInstances?.find((entry) => Boolean(entry.mesh && entry.material));
+      if (instance?.mesh && instance.material) {
+        result = { mesh: instance.mesh, material: instance.material };
+        break;
+      }
+    }
+    entity.destroy();
+    this.renderables.set(name, result);
+    return result;
   }
 
   /**
@@ -275,6 +321,7 @@ export class AssetManager {
   destroy(): void {
     for (const material of this.materials.values()) material.destroy();
     this.materials.clear();
+    this.renderables.clear();
     this.containers.clear();
   }
 }

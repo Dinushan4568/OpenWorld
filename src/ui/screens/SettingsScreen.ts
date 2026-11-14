@@ -27,6 +27,7 @@ export class SettingsScreen extends Screen {
   private fov!: SliderControl;
   private sensitivity!: SliderControl;
   private volume!: SliderControl;
+  private adaptive!: ToggleControl;
   private bloom!: ToggleControl;
   private vignette!: ToggleControl;
   private grain!: ToggleControl;
@@ -110,6 +111,12 @@ export class SettingsScreen extends Screen {
 
     const hintRow = el('div', { class: 'field', style: { paddingTop: '0' } }, [this.qualityDescription]);
 
+    this.adaptive = createToggleField({
+      label: 'Adaptive resolution',
+      hint: 'Slightly lowers internal resolution during heavy scenes to protect a smooth frame rate. Never changes the UI resolution.',
+      value: this.store.get('adaptiveResolution'),
+      onChange: (value) => this.store.set('adaptiveResolution', value),
+    });
     this.fov = createSliderField({
       label: 'Field of view',
       hint: 'Wider views reveal more of the valley but bend the horizon at the edges.',
@@ -143,6 +150,7 @@ export class SettingsScreen extends Screen {
       el('div', { class: 'settings-section__title', text: 'Display' }),
       this.quality.element,
       hintRow,
+      this.adaptive.element,
       this.fov.element,
       this.bloom.element,
       this.vignette.element,
@@ -232,6 +240,7 @@ export class SettingsScreen extends Screen {
   private sync(settings: Readonly<Settings>): void {
     this.quality.setSelected(settings.quality);
     this.fov.setValue(settings.fov);
+    this.adaptive.setChecked(settings.adaptiveResolution);
     this.bloom.setChecked(settings.bloom);
     this.vignette.setChecked(settings.vignette);
     this.grain.setChecked(settings.filmGrain);
@@ -245,7 +254,11 @@ export class SettingsScreen extends Screen {
     const profile = QUALITY_PROFILES[settings.quality];
     this.qualityDescription.textContent = `${profile.description}. Shadows ${
       profile.shadows ? `${profile.shadowResolution}px` : 'off'
-    } · render scale ${Math.round(profile.renderScale * 100)}% · ${profile.drawDistance} m draw distance.`;
+    } · render scale ${Math.round(profile.renderScale * 100)}%${
+      settings.adaptiveResolution ? ` (adaptive floor ${Math.round(profile.adaptiveMinScale * 100)}%)` : ''
+    } · ${profile.drawDistance} m draw distance · ${profile.shadowCascades} shadow cascade${
+      profile.shadowCascades === 1 ? '' : 's'
+    }.`;
   }
 
   override show(): void {

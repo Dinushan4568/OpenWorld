@@ -163,7 +163,7 @@ export class Game {
       await engine.init(this.settings.value);
       const profile = QUALITY_PROFILES[this.settings.get('quality')];
       this.ui.setEngineInfo(
-        `PlayCanvas ${engine.version}\n${engine.rendererLabel} · ${this.cpuLabel()}\n${profile.label} quality · ${profile.drawDistance} m`,
+        `PlayCanvas ${engine.version}\n${engine.rendererLabel} · ${this.cpuLabel()}\n${profile.label} quality · ${profile.drawDistance} m · ${profile.shadowCascades} shadow cascades`,
       );
       this.ui.updateLoading(`${engine.rendererLabel} device ready`, 0.06);
 
@@ -424,6 +424,7 @@ export class Game {
     if (this.state === 'playing') this.elapsed += dt;
     this.pulseCooldown = Math.max(0, this.pulseCooldown - dt);
     this.measureFps(rawDt);
+    this.engine?.sampleFrame(rawDt * 1000);
 
     if (!this.world || !this.player || !this.camera) return;
 
@@ -615,7 +616,7 @@ export class Game {
         `ECHOES ${this.world.collectibles.collectedCount}/${this.world.collectibles.total}\n${speed > 0.2 ? `${speed.toFixed(1)} m/s` : 'STATIONARY'}`,
       );
     }
-    this.ui.hud.setFps(`${this.fps.toFixed(0)} FPS · ${this.gpuLabel()}`, this.settings.get('showFps'));
+    this.ui.hud.setFps(this.performanceText(), this.settings.get('showFps'));
 
     const wildlife = this.world.creatures;
     if (wildlife) {
@@ -1229,7 +1230,7 @@ export class Game {
       if (settings.showHints) this.ui.hud.setHintsVisible(true);
       else this.ui.hud.setHintsVisible(false);
       if (this.player && this.state === 'playing') {
-        this.ui.hud.setFps(`${this.fps.toFixed(0)} FPS · ${this.gpuLabel()}`, settings.showFps);
+        this.ui.hud.setFps(this.performanceText(), settings.showFps);
       }
     };
     this.disposeHandlers.push(this.settings.on('change', apply));
@@ -1381,6 +1382,17 @@ export class Game {
 
   private gpuLabel(): string {
     return this.engine?.rendererLabel ?? 'GL';
+  }
+
+  /** Compact live telemetry; F3 toggles it and the pause/settings copy explains the controls. */
+  private performanceText(): string {
+    const perf = this.engine?.performanceSnapshot();
+    const resolution = Math.round((perf?.resolutionScale ?? 1) * 100);
+    const drawCalls = perf?.drawCalls ?? 0;
+    const frameMs = perf?.frameMs ?? (this.fps > 0 ? 1000 / this.fps : 0);
+    const vram = Math.round(perf?.vramMb ?? 0);
+    const adaptive = perf?.adaptive.enabled ? perf.adaptive.phase.replace('scaling-', 'adapt ') : 'fixed res';
+    return `${this.fps.toFixed(0)} FPS · ${frameMs.toFixed(1)} ms · ${drawCalls} DC\n${this.gpuLabel()} · ${resolution}% internal · ${vram} MB · ${adaptive}`;
   }
 
   private cpuLabel(): string {
