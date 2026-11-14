@@ -346,7 +346,7 @@ character's motion is synthesised in TypeScript rather than baked into animation
 
 ## Testing
 
-`npm test` runs 126 tests across eighteen suites:
+`npm test` runs 127 tests across nineteen suites:
 
 - `math` / `heightfield` / `settings` / `assets` / `ui` / `boot` — the Phase 01 coverage: damping and
   angle maths, deterministic terrain, settings/progress sanitisation, glTF validity and manifests,
@@ -376,6 +376,8 @@ character's motion is synthesised in TypeScript rather than baked into animation
   region tints differ.
 - `character` runtime — binds the rig hierarchy, drives all 23 joints, damps instead of snapping,
   tucks the legs in the air and settles back to idle.
+- `civic-sites` — the always-resident city square, reactor deck, Mother Tree and river bridge build
+  against a headless PlayCanvas device, register their colliders and dispose their materials.
 - `creatures-species` — all nine roster points are dry, walkable and inside the basin, species
   metadata is complete and unique, every rig joint exists, patrols have at least three reachable
   stops (or are deliberate free roamers), and encounter/weakness copy is present for the codex.
