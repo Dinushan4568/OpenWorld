@@ -7,7 +7,8 @@ expedition's movement around a proper over-the-shoulder third-person controller,
 character and a collision world that props, steps and camera booms all share. Phase 03 turns the
 valley into a living region: an always-descending Crystal River with two waterfalls, streamed
 scatter across five distinct regions, a full day/night cycle, and the ruins, streets and research
-station that fill them.
+station that fill them. Phase 04 adds the valley's robotic wildlife: four original machine species
+with their own bodies, patrols, personalities, scannable weaknesses and cinematic first encounters.
 
 Everything is original work. The project is inspired by the *feeling* of exploring a vast, overgrown
 world — it does not use, copy or reproduce any copyrighted characters, assets, environments, stories
@@ -30,7 +31,7 @@ The dev server binds `0.0.0.0` so it also works behind the sandbox preview proxy
 ```bash
 npm run build        # typecheck + production bundle into dist/
 npm run preview      # serve the production bundle
-npm test             # 95 unit/DOM tests (Vitest)
+npm test             # 126 unit/DOM/integration tests (Vitest)
 npm run typecheck    # tsc --noEmit
 npm run assets       # regenerate the GLB prop library + the Wayfarer character
 ```
@@ -49,12 +50,85 @@ WebGPU first and falls back to WebGL 2 automatically.
 | Run | `Shift` (hold) | run toggle |
 | Jump | `Space` | jump button |
 | Echo pulse | `E` | pulse button |
+| Scan robotic creature | `F` | scan button |
 | Pause / resume | `Esc` | pause button |
 | Toggle FPS + renderer | `F3` | — |
 | Mute audio | `M` | — |
 
 Settings (display, camera, audio, accessibility) are reachable from the main menu and the pause
 screen, apply immediately and persist to `localStorage`.
+
+---
+
+## What Phase 04 adds — robotic wildlife
+
+Four original machine species live in the existing valley. They are not set dressing: each walks a
+route, notices you, reacts to the world, returns home, can be scanned, and remembers being catalogued.
+
+| Species | Class | Habitat | Threat | Fictional environmental weakness |
+| --- | --- | --- | --- | --- |
+| **SC-07 Mossback Scuttler** | hexapedal scavenger | forest floor, plaza edge | 1 | *Phototropic overload* — solar vanes lock onto an echo pulse |
+| **GR-02 Cinderhull Grazer** | quadruped furnace | valley meadow, grove | 3 | *Resonance-blind knee servos* — reactor hum desynchronises its stride |
+| **DR-11 Glasswing Drifter** | thermal glider | above the falls and lake | 2 | *Thermal dependency* — cold spray forces it to settle |
+| **WD-01 Verdigris Warden** | armoured custodian | city square, Station Theta | 4 | *Echo-keyed aegis* — the shield locks for a breath when pulsed |
+
+**One brain, four personalities**
+- `creatures/brain.ts` is a single deterministic state machine reused by every species:
+  **perception** (sight cone with concealment, hearing, proximity), **steering** (slope, water,
+  prop and neighbour avoidance), **routine** (idle → patrol → wait, or roaming around a den),
+  **event reaction** (surges, beacons, reactor hum, wind and echo pulses), **threat response**
+  (flee, stand-and-display, controlled advance) and **homing** (a leash plus an explicit return
+  state). Species differ only by numbers — the Scuttler bolts, the Warden advances, the Grazer
+  holds its ground, the Drifter banks away.
+- Patrol waypoints that are unreachable (wedged inside a ruin) time out and advance instead of
+  trapping the creature. Walking slowly shrinks the silhouette the machine can resolve; sprinting
+  makes you easier to notice and louder.
+- Nothing is random at runtime: each individual seeds its own wander and idle rhythm from its id.
+
+**Scanning, clues and avoidance**
+- `F` scans the nearest machine in the camera cone (58 m, terrain and prop line of sight) and opens
+  a specimen panel: classification, state, distance, size, mass, awareness, temperament,
+  behaviour and an **environmental weakness** expressed as a fictional puzzle clue plus a tactic.
+- Scan reports name the world feature to exploit. They are hints, not violence: pulse a Scuttler
+  from uphill, lure the Grazer across the facility hum, pull the Drifter through the falls' spray,
+  or stagger the Warden from beyond its post and slip past. The HUD counts catalogued species (0–4).
+- A danger chip warns when a nearby machine is watching, challenging, investigating or bolting,
+  and its state is visible on the creature itself through eye colour, glow intensity and posture.
+
+**Cinematic first encounters**
+- The first time you meet a Grazer, Drifter or Warden, the camera eases into a slow orbit of the
+  machine, the HUD letterboxes, movement pauses, and the creature performs a species-specific
+  display (rear up, wingspread, aegis raise) before returning to its routine. Each species is
+  framed once, so the world stays playable.
+
+**Non-graphic energy interaction**
+- The Echo pulse (`E`) is a fictional resonance, never a weapon. Machines within 34 m are dazed
+  for a moment — the Scuttler's vanes fold, the Drifter lists, the Grazer stalls, the Warden's
+  aegis rings — then they reboot and go back to being wary. No damage, no defeat states.
+
+**Procedural mechanical bodies**
+- `CreatureModel.ts` builds four rigs from a local geometry kit (`geometry.ts`): faceted armour
+  plates, brass pistons, ribbed heat sinks, rivets, sensor lenses, exhausts, vanes, wings, tails,
+  shields and pikes. Each rigid joint merges into one opaque mesh plus optional emissive mesh,
+  so each creature costs roughly a dozen draw calls and all nine together about 130.
+- Materials are metallic PBR with per-vertex paint, plus unlit emissive conduits and lenses. The
+  glow breathes with state, brightens at night, flares on a pulse, and the two large species carry
+  a small coloured point light.
+- Animation is procedural: tripod gait, diagonal quadruped gait, stomping biped, wingbeats with
+  lagged tips, hover ring, tail sway, head tracking, jaw and aegis displays, all damped so states
+  never snap.
+
+**Where to find them**
+- Scuttlers: forest floor near the Mother Tree (patrol), and the trail edge at `(56, 4)` (free
+  roamer).
+- Grazers: the meadow at `(96, 40)` and the grove at `(150, -70)`.
+- Drifters: above the upper falls at `(2, 168)` (thermal circuit) and over Mirrorwater at
+  `(-70, -58)` (free roamer).
+- Wardens: the Glasshouse Terraces square around `(-198, -25)` and the Station Theta deck
+  perimeter at `(-100, 190)`.
+
+All names, silhouettes, palettes, behaviour copy and weakness clues in this system are original to
+this project.
 
 ---
 
@@ -272,11 +346,12 @@ character's motion is synthesised in TypeScript rather than baked into animation
 
 ## Testing
 
-`npm test` runs 95 tests across fifteen suites:
+`npm test` runs 126 tests across eighteen suites:
 
 - `math` / `heightfield` / `settings` / `assets` / `ui` / `boot` — the Phase 01 coverage: damping and
   angle maths, deterministic terrain, settings/progress sanitisation, glTF validity and manifests,
-  menu/settings/pause/HUD transitions and graceful fatal-screen rendering without a graphics device.
+  menu/settings/pause/HUD transitions, the specimen scan panel, danger readout and encounter
+  letterbox, and graceful fatal-screen rendering without a graphics device.
 - `collision` — grid queries, push-out from solids, wall-slide normals, support for walkable tops,
   ignoring colliders at or below the feet, camera `blocked()` tests and `clear()`.
 - `gait` — every joint is posed, idle breathing, cadence grows with speed, contralateral arm/leg
@@ -288,7 +363,8 @@ character's motion is synthesised in TypeScript rather than baked into animation
   present, connected hierarchy, human height with feet at the origin, emissive visor/bio materials
   and a real-time triangle budget.
 - `camera` — mouse-right turns the view right, sensitivity scaling, invert-Y, pitch/zoom clamps,
-  boom shortening against a solid prop and the shoulder offset in `snapToTarget`.
+  boom shortening against a solid prop, the shoulder offset in `snapToTarget` and the encounter
+  `frameOn` orbit with its timed release.
 - `river` — monotone descent, the mouth meeting the water line, a navigable channel depth along the
   centreline, exactly two falls with no stair-stepped tail, and arc-length sampling continuity.
 - `streaming` — coordinate/key round-trips, nearest-first desired chunks inside the world boundary,
@@ -300,6 +376,15 @@ character's motion is synthesised in TypeScript rather than baked into animation
   region tints differ.
 - `character` runtime — binds the rig hierarchy, drives all 23 joints, damps instead of snapping,
   tucks the legs in the air and settles back to idle.
+- `creatures-species` — all nine roster points are dry, walkable and inside the basin, species
+  metadata is complete and unique, every rig joint exists, patrols have at least three reachable
+  stops (or are deliberate free roamers), and encounter/weakness copy is present for the codex.
+- `creatures-brain` — deterministic sight cones, slow-walk concealment, sprint noise, hearing and
+  proximity, patrol/wait/roam routines, flee/display/advance responses, environmental reactions,
+  leash return, waypoint timeouts, pulse daze recovery, night-scaled sight and seed-stable idling.
+- `creatures-runtime` — a headless PlayCanvas null device builds all nine bodies, ticks them for
+  twenty seconds without leaving the terrain, scans a specimen through the camera cone, dazes a
+  machine with the pulse, frames a first encounter and disposes the rig cleanly.
 
 Additional verification performed: `tsc --noEmit` (clean), `vite build` (clean), and dev-server
 `curl` checks for `/`, `/src/main.ts`, `/favicon.svg`, `/assets/models/manifest.json`, the prop GLBs
@@ -330,7 +415,7 @@ Run the dev server, open the game, then visit `/?range=1`:
 
 ---
 
-## Known limits (Phase 03)
+## Known limits (Phase 04)
 
 - The character is an authored, low-poly, jointed figure (17.7k triangles) — a stylised expedition
   suit rather than a scanned actor. It is not skinned and has no baked clips: motion is procedural,
@@ -339,17 +424,21 @@ Run the dev server, open the game, then visit `/?range=1`:
   prop density, not terrain tessellation.
 - The river is a carved corridor, not a fluid simulation: flow is scrolling normal maps and the two
   falls are authored meshes, so there is no buoyancy, current push or swimming.
-- One objective loop; no combat, dialogue, inventory, NPCs or vehicles.
+- One objective loop; no combat, dialogue, inventory or vehicles. Robotic creatures cannot be
+  damaged or defeated — the Echo pulse only dazes them, and they always reboot.
 - Collision uses vertical cylinders, so overhangs, thin diagonal walls and sloped prop surfaces are
   approximated. Walkable tops are circles; small props are intentionally left non-solid.
 - Position is saved at most every eight seconds and on pause/quit, so a hard tab kill can lose a few
   metres of travel (shards are saved immediately).
 - No multiplayer, no cloud saves, no gamepad support; touch controls cover movement, look, run,
-  jump, pulse and pause.
+  jump, pulse, scan and pause.
 - Streamed chunks are built on the main thread as the player crosses a boundary, so the first pass
   into a new region can hitch for a frame while props and colliders are created.
+- Creatures avoid solids and steep ground through local probing rather than pathfinding, so a very
+  narrow gap or a perfectly walled-in patrol point may be skipped by the 18 s waypoint timeout. They
+  have no rigid-body collision with each other or the player.
 - The controller test range (`?range=1`) and its debug HUD remain temporary scaffolding.
 
 ---
 
-*Echoes of the Lost World — Phase 03 · v0.3.0*
+*Echoes of the Lost World — Phase 04 · v0.4.0*

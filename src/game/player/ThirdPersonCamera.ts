@@ -24,6 +24,14 @@ export class ThirdPersonCamera {
   private shakeScale = 1;
   private cinematicTime = 0;
   private initialised = false;
+  private frame: {
+    target: { x: number; y: number; z: number };
+    radius: number;
+    height: number;
+    duration: number;
+    elapsed: number;
+    angle: number;
+  } | null = null;
   private collision: CollisionWorld | null = null;
 
   constructor(camera: Entity, yaw: number) {
@@ -40,6 +48,35 @@ export class ThirdPersonCamera {
     if (this.cinematic === enabled) return;
     this.cinematic = enabled;
     if (!enabled) this.initialised = false;
+  }
+
+  get framing(): boolean {
+    return this.frame !== null;
+  }
+
+  /**
+   * Ease into a slow orbit around a point of interest — used by the cinematic
+   * creature encounters. Movement input is gated by the caller for the
+   * duration, and the framing releases itself when the timer expires.
+   */
+  frameOn(
+    target: { x: number; y: number; z: number },
+    options: { duration?: number; radius?: number; height?: number } = {},
+  ): void {
+    const radius = options.radius ?? Math.max(7, this.distance * 0.8);
+    const angle = Math.atan2(this.position.z - target.z, this.position.x - target.x);
+    this.frame = {
+      target: { ...target },
+      radius,
+      height: options.height ?? 2.2,
+      duration: options.duration ?? 6,
+      elapsed: 0,
+      angle,
+    };
+  }
+
+  clearFrame(): void {
+    this.frame = null;
   }
 
   applyLook(dx: number, dy: number, sensitivity: number, invertY: boolean): void {
@@ -80,7 +117,23 @@ export class ThirdPersonCamera {
     let focusZ: number;
     let fovBoost = 0;
 
-    if (this.cinematic) {
+    if (this.frame) {
+      const frame = this.frame;
+      frame.elapsed += dt;
+      const angle = frame.angle + frame.elapsed * 0.2;
+      focusX = frame.target.x;
+      focusY = frame.target.y;
+      focusZ = frame.target.z;
+      desiredCamX = focusX + Math.cos(angle) * frame.radius;
+      desiredCamZ = focusZ + Math.sin(angle) * frame.radius;
+      desiredCamY = focusY + frame.height + Math.sin(frame.elapsed * 0.55) * 0.25;
+      const floor = Math.max(heightAt(desiredCamX, desiredCamZ), WORLD.waterLevel) + 1.1;
+      desiredCamY = Math.max(desiredCamY, floor);
+      this.focus.x = focusX;
+      this.focus.y = focusY;
+      this.focus.z = focusZ;
+      if (frame.elapsed >= frame.duration) this.frame = null;
+    } else if (this.cinematic) {
       this.cinematicTime += dt;
       const t = this.cinematicTime * 0.045;
       focusX = 96;
@@ -147,7 +200,7 @@ export class ThirdPersonCamera {
       }
     }
 
-    const lambda = this.cinematic ? 3 : CAMERA.positionDamping;
+    const lambda = this.frame ? 2.4 : this.cinematic ? 3 : CAMERA.positionDamping;
     this.position.x = damp(this.position.x, desiredCamX, lambda, dt);
     this.position.y = damp(this.position.y, desiredCamY, lambda, dt);
     this.position.z = damp(this.position.z, desiredCamZ, lambda, dt);
