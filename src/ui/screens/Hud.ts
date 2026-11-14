@@ -454,6 +454,17 @@ export class Hud extends Screen {
     this.hidePrompt();
     for (const toast of [...this.activeToasts]) this.dismissToast(toast);
     this.bannerEl.classList.remove('is-visible');
+    this.hideScan();
     super.hide();
+  }
+
+  /** Release HUD timers and DOM when the owning UI is torn down. */
+  dispose(): void {
+    for (const toast of [...this.activeToasts]) this.dismissToast(toast);
+    window.clearTimeout(this.bannerTimer);
+    window.clearTimeout(this.scanTimer);
+    this.bannerTimer = 0;
+    this.scanTimer = 0;
+    this.root.remove();
   }
 }

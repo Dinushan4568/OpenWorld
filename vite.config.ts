@@ -1,6 +1,12 @@
 import { defineConfig } from 'vite';
 
+// Allow project-page deployments (e.g. GitHub Pages at /repo/) without
+// rewriting every asset URL. Defaults to the domain root.
+const base =
+  (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.VITE_BASE ?? '/';
+
 export default defineConfig({
+  base,
   server: {
     host: '0.0.0.0',
     port: 5173,

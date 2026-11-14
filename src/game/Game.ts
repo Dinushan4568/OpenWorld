@@ -83,6 +83,7 @@ export class Game {
   private bootStart = performance.now();
   private assetFailures: AssetFailure[] = [];
   private readonly disposeHandlers: Array<() => void> = [];
+  private disposed = false;
 
   constructor() {
     this.canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
@@ -1401,8 +1402,12 @@ export class Game {
   }
 
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    if (this.player) this.saveProgress();
     for (const off of this.disposeHandlers) off();
     this.disposeHandlers.length = 0;
+    this.audio.dispose();
     this.input.dispose();
     this.storyWorld?.dispose();
     this.resourceWorld?.dispose();

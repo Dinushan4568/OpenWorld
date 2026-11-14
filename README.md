@@ -15,6 +15,10 @@ recovered memories and two endings. Mission progress is saved locally and every 
 from the world, not just described in data. Phase 06 adds the field record: a complete RPG
 progression layer with experience and levels, a five-discipline skill tree, nine exploration
 abilities, resources, equipment upgrades, crafting, a character sheet and validated IndexedDB saves.
+Phase 08 is the production-hardening pass: release build verification, boot/error surfaces,
+asset integrity checks, lifecycle cleanup and static-host deployment. The Phase 07 presentation
+work below remains part of the shipped game.
+
 Phase 07 is the presentation pass: quality presets that actually change the renderer, adaptive
 internal resolution, image-based lighting, SSAO, colour grading, terrain normals, clearcoat water,
 instanced vegetation and props, a time-sliced streaming queue and new firefly/foam atmosphere.
@@ -39,12 +43,18 @@ The dev server binds `0.0.0.0` so it also works behind the sandbox preview proxy
 
 ```bash
 npm run build        # typecheck + production bundle into dist/
-npm run preview      # serve the production bundle
-npm test             # 189 unit/DOM/integration tests (Vitest)
+npm run build:prod   # build + asset QA + gzip/brotli pre-compression
+npm run preview      # serve the production bundle (0.0.0.0:4173)
+npm run serve:dist   # static server with pre-compressed assets (0.0.0.0:4174)
+npm test             # 197 unit/DOM/integration tests (Vitest)
 npm run typecheck    # tsc --noEmit
 npm run benchmark    # headless CPU streaming/instancing benchmark
 npm run assets       # regenerate the GLB prop library + the Wayfarer character
 ```
+
+Production hosting, caching, compression and rollback instructions are in
+[DEPLOYMENT.md](DEPLOYMENT.md). Test evidence and known limitations are in
+[QA_REPORT.md](QA_REPORT.md).
 
 **Requirements:** a WebGL 2 or WebGPU capable browser with hardware acceleration. The renderer tries
 WebGPU first and falls back to WebGL 2 automatically.
@@ -140,7 +150,7 @@ disposal path are in place if authored compressed textures are added later.
 `adaptive` covers windowing, hysteresis, stalls, bounds and snapshots. `chunk-instancing` builds a
 real chunk field on a null device and asserts that instancing reduces render entities and that all
 instance buffers/meshes are released on dispose. `streaming` covers the revised LOD plan. The full
-suite is **189 tests across 28 files**; `npm run benchmark` prints the CPU streaming numbers above.
+suite is **197 tests across 31 files**; `npm run benchmark` prints the CPU streaming numbers above.
 
 ### Phase 07 manual checklist
 
@@ -529,7 +539,7 @@ character's motion is synthesised in TypeScript rather than baked into animation
 
 ## Testing
 
-`npm test` runs 189 tests across twenty-eight suites:
+`npm test` runs 197 tests across thirty-one suites:
 
 - `math` / `heightfield` / `settings` / `assets` / `ui` / `boot` — the Phase 01 coverage: damping and
   angle maths, deterministic terrain, settings/progress sanitisation, glTF validity and manifests,
@@ -704,8 +714,8 @@ stats, resource yield, scan samples, node one-shotting, equipment equip/upgrade/
 maths, IndexedDB round-trip, reset and corrupt-save repair. `progression-ui` — all five tabs,
 Learn/Upgrade/Equip/Unequip/Craft callbacks, close paths and HUD level/stamina readouts.
 `resource-nodes` — all 20 caches build grounded, nearest interaction, gather hiding and survey state.
-`locomotion` — Vault Step air jump and water-speed modifiers. The full suite is **189 tests across
-28 files**.
+`locomotion` — Vault Step air jump and water-speed modifiers. The full suite is **197 tests across
+31 files**.
 
 ### Phase 06 manual checklist
 
@@ -773,4 +783,4 @@ Learn/Upgrade/Equip/Unequip/Craft callbacks, close paths and HUD level/stamina r
 
 ---
 
-*Echoes of the Lost World — Phase 07 · v0.7.0*
+*Echoes of the Lost World — Phase 08 · v0.8.0*

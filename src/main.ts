@@ -4,16 +4,21 @@ import { Game } from './game/Game';
 declare global {
   interface Window {
     __echoes?: Game;
+    __echoesModuleLoaded?: boolean;
+    __echoesReportBootFailure?: (detail: string) => void;
   }
 }
+
+// The inline shell watchdog uses this flag to distinguish a failed module load
+// from a slow world build. It intentionally runs after the static imports.
+window.__echoesModuleLoaded = true;
 
 function renderFallback(error: unknown): void {
   const message = error instanceof Error ? error.message : String(error);
   console.error('[bootstrap] fatal', error);
   const shell = document.getElementById('boot-shell');
   shell?.remove();
-  const root = document.getElementById('ui-root');
-  if (!root) return;
+  const root = document.getElementById('ui-root') ?? document.body;
   root.innerHTML = `
     <div class="fatal">
       <div class="fatal__panel">
@@ -33,7 +38,7 @@ function start(): void {
   try {
     const game = new Game();
     window.__echoes = game;
-    void game.boot();
+    void game.boot().catch((error: unknown) => renderFallback(error));
   } catch (error) {
     renderFallback(error);
   }

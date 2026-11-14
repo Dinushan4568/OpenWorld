@@ -177,7 +177,7 @@ export class ProgressStore {
       const raw = this.storage.getItem(GAME.progressKey);
       return raw ? sanitizeProgress(JSON.parse(raw)) : blankProgress();
     } catch {
-      return { ...EMPTY_PROGRESS };
+      return blankProgress();
     }
   }
 

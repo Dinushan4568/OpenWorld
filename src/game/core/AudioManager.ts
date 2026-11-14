@@ -141,6 +141,18 @@ export class AudioManager {
     });
   }
 
+  /** Closes the audio graph; safe to call more than once. */
+  dispose(): void {
+    const ctx = this.ctx;
+    this.started = false;
+    this.ctx = null;
+    this.master = null;
+    this.ambient = null;
+    this.noiseBuffer = null;
+    this.echoDelay = null;
+    if (ctx) void ctx.close().catch(() => undefined);
+  }
+
   setVolume(value: number): void {
     this.volume = Math.max(0, Math.min(1, value));
     if (this.ctx && this.master) {

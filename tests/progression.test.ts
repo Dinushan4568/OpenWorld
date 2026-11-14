@@ -307,6 +307,26 @@ describe('ProgressionSystem — save and load', () => {
     expect(await second.flushSave()).toBe(true);
   });
 
+  it('drains the final save before closing IndexedDB', async () => {
+    const store = new IndexedDBProgressionStore();
+    await store.clear();
+    const first = new ProgressionSystem({ persistence: store, autoSave: false });
+    expect((await first.load()).ok).toBe(true);
+    first.grantXp(260);
+    first.addResource('ferro-scrap', 4);
+    const pending = first.flushSave();
+    first.dispose();
+    expect(await pending).toBe(true);
+
+    const secondStore = new IndexedDBProgressionStore();
+    const second = new ProgressionSystem({ persistence: secondStore, autoSave: false });
+    expect((await second.load()).ok).toBe(true);
+    expect(second.profile.level).toBe(first.profile.level);
+    expect(second.resourceAmount('ferro-scrap')).toBe(4);
+    await secondStore.clear();
+    secondStore.close();
+  });
+
   it('loads through IndexedDB, including a second load after save', async () => {
     const store = new IndexedDBProgressionStore();
     await store.clear();

@@ -66,6 +66,7 @@ export class UiRoot {
   private overlay: OverlayKind = null;
   private settingsReturn: 'menu' | 'pause' = 'menu';
   private fatal: FatalErrorScreen | null = null;
+  private disposed = false;
 
   constructor(
     root: HTMLElement,
@@ -422,6 +423,7 @@ export class UiRoot {
   }
 
   showFatal(options: FatalErrorOptions): void {
+    this.loading.hide();
     this.fatal?.destroy();
     this.fatal = new FatalErrorScreen({
       ...options,
@@ -446,12 +448,22 @@ export class UiRoot {
   }
 
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
     this.unsubscribe();
+    this.loading.dispose();
+    this.hud.dispose();
+    this.menu.destroy();
+    this.touch.root.remove();
+    this.pause.destroy();
+    this.credits.destroy();
     this.settings.destroy();
     this.dialogue.destroy();
     this.questLog.destroy();
     this.puzzle.destroy();
     this.character.destroy();
     this.fatal?.destroy();
+    this.atmosphere.remove();
+    this.fade.remove();
   }
 }
