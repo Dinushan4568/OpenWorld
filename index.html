@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#050d10" />
+    <meta
+      name="description"
+      content="Echoes of the Lost World — an original cinematic open-world sci-fi expedition built with PlayCanvas, TypeScript and Vite."
+    />
+    <title>Echoes of the Lost World</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <style>
+      /* First-paint shell: visible before the module graph loads. */
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #050d10;
+        overflow: hidden;
+      }
+      #boot-shell {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        color: #efe7da;
+        font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+        letter-spacing: 0.4em;
+        font-size: 11px;
+        text-transform: uppercase;
+        background:
+          radial-gradient(120% 90% at 50% 110%, rgba(255, 178, 107, 0.14), transparent 60%),
+          radial-gradient(80% 60% at 70% 0%, rgba(110, 240, 210, 0.1), transparent 70%),
+          #050d10;
+        transition: opacity 0.6s ease;
+      }
+      #boot-shell.is-done {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #boot-shell .ring {
+        width: 46px;
+        height: 46px;
+        border: 1px solid rgba(239, 231, 218, 0.25);
+        border-top-color: rgba(255, 178, 107, 0.9);
+        border-radius: 50%;
+        animation: boot-spin 1.6s linear infinite;
+        margin: 0 auto 22px;
+      }
+      @keyframes boot-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="boot-shell" role="status" aria-live="polite">
+      <div>
+        <div class="ring"></div>
+        Initialising expedition
+      </div>
+    </div>
+    <div id="app">
+      <canvas id="game-canvas" aria-label="Echoes of the Lost World game viewport"></canvas>
+      <div id="ui-root"></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
