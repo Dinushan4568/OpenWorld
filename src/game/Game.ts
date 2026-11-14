@@ -11,6 +11,10 @@ import type { CompassMarker } from '../ui/screens/Hud';
 import { SPECIES } from './creatures/species';
 import type { PauseStats } from '../ui/screens/PauseScreen';
 import { World } from './world/World';
+import { StoryWorld } from './world/StoryWorld';
+import { StoryDirector, type StoryNotice } from './story/StoryDirector';
+import { MAIN_MISSION_IDS } from './story/content';
+import type { DialogueSession, PuzzleDefinition } from './story/types';
 
 import { clamp, distance2D, formatDuration } from './util/math';
 import type { EchoShard } from './world/Collectibles';
@@ -33,12 +37,18 @@ export class Game {
   private readonly audio: AudioManager;
   private readonly ui: UiRoot;
   private readonly input: InputManager;
+  private readonly story = new StoryDirector();
 
   private engine: Engine | null = null;
   private assets: AssetManager | null = null;
   private world: World | null = null;
+  private storyWorld: StoryWorld | null = null;
   private player: PlayerController | null = null;
   private camera: ThirdPersonCamera | null = null;
+  private dialogueSession: DialogueSession | null = null;
+  private activePuzzle: PuzzleDefinition | null = null;
+  private storyModal = false;
+  private pendingEnding = false;
 
   private state: GameState = 'boot';
   private elapsed = 0;
@@ -73,8 +83,10 @@ export class Game {
       onScan: () => this.scanCreature(),
       onToggleFps: () => this.settings.set('showFps', !this.settings.get('showFps')),
       onToggleMute: () => this.toggleMute(),
+      onInteract: () => this.interactNearest(),
+      onJournal: () => this.toggleJournal(),
       onPointerLockLost: () => {
-        if (this.state === 'playing') this.pause('pointer-lock');
+        if (this.state === 'playing' && !this.storyModal) this.pause('pointer-lock');
       },
     });
 
@@ -85,6 +97,8 @@ export class Game {
       onSprint: (active: boolean) => this.input.setTouchSprint(active),
       onPulse: () => this.triggerPulse(),
       onScan: () => this.scanCreature(),
+      onInteract: () => this.interactNearest(),
+      onJournal: () => this.toggleJournal(),
       onPause: () => this.togglePause(),
     };
 
@@ -93,9 +107,15 @@ export class Game {
       onResume: () => void this.resume(),
       onQuit: () => void this.quitToMenu(),
       onRetry: () => window.location.reload(),
+      onDialogueChoose: (choiceId) => this.chooseDialogue(choiceId),
+      onDialogueClose: () => this.closeDialogue(),
+      onPuzzleSolved: (puzzle) => this.solvePuzzle(puzzle),
+      onPuzzleClose: () => this.closePuzzle(),
+      onJournalClose: () => this.closeJournal(),
     };
 
     this.ui = new UiRoot(this.uiRoot, this.settings, uiCallbacks, touchCallbacks);
+    this.bindStoryEvents();
     this.bindPreferences();
     this.bindWindowLifecycle();
     this.bindGlobalErrorHandling();
@@ -141,6 +161,7 @@ export class Game {
         this.ui.updateLoading(stage, 0.52 + progress * 0.44);
       });
       this.world = world;
+      this.storyWorld = new StoryWorld(engine.app, this.assets);
       this.bindCreatureEvents(world);
 
       const spawn = world.spawn;
@@ -189,6 +210,7 @@ export class Game {
     if (!this.world) return;
     this.ui.hud.setShards(this.world.collectibles.collectedCount, this.world.collectibles.total);
     this.ui.hud.setObjective(this.objectiveText());
+    this.storyWorld?.apply(this.story.worldView());
   }
 
   private removeBootShell(): void {
@@ -217,6 +239,8 @@ export class Game {
         this.progress.save();
         this.world.collectibles.reset();
         this.world.setGateEnergy(0);
+        this.story.reset();
+        this.story.setShards(0);
         const spawn = this.world.spawn;
         this.player.teleport(spawn.x, spawn.z, spawn.heading);
         this.player.heading = spawn.heading;
@@ -233,6 +257,10 @@ export class Game {
         this.player.teleport(safe.x, safe.z);
       }
 
+      this.story.setShards(this.world.collectibles.collectedCount);
+      this.story.updatePosition(this.player.position.x, this.player.position.z);
+      this.syncStoryState();
+
       // Pointer lock must be requested inside the click gesture.
       if (!isTouchDevice()) void this.input.requestPointerLock();
       this.input.setEnabled(true);
@@ -248,13 +276,14 @@ export class Game {
       this.state = 'playing';
       this.ui.showHud();
       this.ui.hud.setShards(this.world.collectibles.collectedCount, this.world.collectibles.total);
-      this.ui.hud.setObjective(this.objectiveText());
       this.ui.hud.setLocation(this.world.getAreaName(this.player.position.x, this.player.position.z));
+      this.syncStoryState();
       if (this.world.testRange) {
         this.ui.hud.banner('Controller Test Range', 'WASD move · Shift run · Space jump · Esc pause', 6500);
         this.ui.toast('Validation range — colliders, steps, jumps and camera boom are active', 'accent', 6500);
       } else {
-        this.ui.hud.banner('Mirrorwater Valley', 'Expedition underway');
+        this.ui.hud.banner(this.story.chapterTitle(), this.story.chapterSubtitle(), 6200);
+        this.ui.toast(this.story.missionTitle(), 'accent', 5200);
       }
       this.ui.fadeIn(650);
       if (!isTouchDevice()) {
@@ -275,7 +304,7 @@ export class Game {
   }
 
   private pause(reason: 'manual' | 'pointer-lock' = 'manual'): void {
-    if (this.state !== 'playing' || !this.player) return;
+    if (this.state !== 'playing' || !this.player || this.storyModal) return;
     this.state = 'paused';
     this.input.setEnabled(false);
     this.input.exitPointerLock();
@@ -326,6 +355,13 @@ export class Game {
     this.ui.hud.setCinematic(false);
     this.ui.hud.hideScan();
     this.ui.hud.setDanger(null);
+    this.dialogueSession = null;
+    this.activePuzzle = null;
+    this.storyModal = false;
+    this.pendingEnding = false;
+    this.ui.hideDialogue();
+    this.ui.hideQuestLog();
+    this.ui.hidePuzzle();
     this.camera?.clearFrame();
     this.camera?.setCinematic(true);
     this.ui.refreshMenuProgress(this.progressSummary());
@@ -356,6 +392,7 @@ export class Game {
         wading: false,
         interactive: false,
       });
+      this.storyWorld?.update(dt, this.worldTime, this.player.position);
       return;
     }
 
@@ -364,6 +401,20 @@ export class Game {
     }
 
     if (this.state !== 'playing') return;
+
+    if (this.storyModal) {
+      this.camera.update(dt, this.player.position, { sprinting: false, wading: false, speed: 0 });
+      this.world.update(dt, this.worldTime, {
+        player: this.player.position,
+        yaw: this.camera.yaw,
+        sprinting: false,
+        speed: 0,
+        wading: false,
+        interactive: false,
+      });
+      this.storyWorld?.update(dt, this.worldTime, this.player.position);
+      return;
+    }
 
     if (this.encounterTimer > 0) {
       this.encounterTimer = Math.max(0, this.encounterTimer - dt);
@@ -411,6 +462,8 @@ export class Game {
       speed: this.player.speed,
     });
     if (collected) this.onShardCollected(collected);
+    this.storyWorld?.update(dt, this.worldTime, this.player.position);
+    this.story.updatePosition(this.player.position.x, this.player.position.z);
 
     this.ui.hud.setWater(this.player.wading);
     this.ui.hud.tickHints(dt, this.player.speed > 0.6);
@@ -438,6 +491,13 @@ export class Game {
     this.ui.hud.setClock(this.world.clockLabel);
     const heading = (180 - (this.camera!.yaw * 180) / Math.PI + 360) % 360;
     const markers: CompassMarker[] = [];
+    const storyTarget = this.story.currentTarget();
+    if (storyTarget) {
+      markers.push({
+        bearing: bearingTo(position.x, position.z, storyTarget.x, storyTarget.z),
+        kind: storyTarget.kind,
+      });
+    }
     const remaining = this.world.collectibles.remaining
       .map((shard) => ({ shard, distance: distance2D(position.x, position.z, shard.x, shard.z) }))
       .sort((a, b) => a.distance - b.distance)
@@ -473,14 +533,14 @@ export class Game {
           : null,
         threat && threat.threat >= 4 ? 'alert' : 'warn',
       );
-      // The gate objective owns the prompt slot until the expedition is over;
-      // after that, scanning stays available for the specimen archive.
-      const gateObjective = this.world.collectibles.allCollected && !this.completed;
       const inEncounter = this.encounterTimer > 0 && this.encounterTargetId !== null;
-      const scanning = inEncounter || (!gateObjective && wildlife.hasScanCandidate(position, this.camera!.yaw));
+      const scanning = inEncounter || wildlife.hasScanCandidate(position, this.camera!.yaw, this.scanRange());
       this.ui.hud.setScanReady(scanning);
-      if (scanning) this.ui.hud.showPrompt(inEncounter ? 'Scan the machine' : 'Scan robotic creature', 'F');
-      else if (!gateObjective) this.ui.hud.hidePrompt();
+      const interaction = this.storyWorld?.nearestInteraction(position) ?? null;
+      if (inEncounter) this.ui.hud.showPrompt('Scan the machine', 'F');
+      else if (interaction) this.ui.hud.showPrompt(interaction.label, 'R');
+      else if (scanning) this.ui.hud.showPrompt('Scan robotic creature', 'F');
+      else this.ui.hud.hidePrompt();
     }
   }
 
@@ -498,18 +558,12 @@ export class Game {
   private checkCompletion(): void {
     if (!this.player || !this.world || this.completed) return;
     if (!this.world.collectibles.allCollected) return;
-    const distance = distance2D(this.player.position.x, this.player.position.z, WORLD.gateCenter.x, WORLD.gateCenter.z);
-    if (distance > 26) {
-      this.ui.hud.showPrompt('Return to the Echo Gate');
-      return;
-    }
-    this.ui.hud.hidePrompt();
     this.completed = true;
     this.world.setGateEnergy(1);
     this.audio.gateEnergised();
-    this.ui.hud.banner('The Gate Answers', 'All five echoes recovered — Phase 01 complete', 6500);
-    this.ui.toast('Expedition complete · the Echo Gate is awake', 'accent', 7000);
-    this.ui.hud.setObjective('The Gate is awake. The valley beyond is open.');
+    this.ui.hud.banner('The Valley Answers', 'All five echoes recovered', 5600);
+    this.ui.toast('The Echo Gate is listening. Bring the echoes to the witness.', 'accent', 7000);
+    this.syncStoryState();
   }
 
   /* ------------------------------------------------------------------ */
@@ -553,12 +607,210 @@ export class Game {
     this.ui.hud.setSpecimens(manager.scannedSpecies, manager.totalSpecies);
   }
 
+  /* ------------------------------------------------------------------ */
+  /* Story                                                              */
+  /* ------------------------------------------------------------------ */
+
+  private bindStoryEvents(): void {
+    const missions = this.story.missions;
+    this.disposeHandlers.push(
+      missions.on('missionStarted', () => this.syncStoryState()),
+      missions.on('objectiveCompleted', ({ objective }) => {
+        if (this.state === 'playing' && !this.storyModal && objective.kind !== 'reach') {
+          this.ui.toast(`Objective complete · ${objective.text}`, 'default', 3200);
+        }
+        this.syncStoryState();
+      }),
+      missions.on('missionCompleted', ({ mission, reward, nextMission }) => {
+        this.syncStoryState();
+        if (this.state !== 'playing') return;
+        this.audio.pickup();
+        this.ui.hud.banner(mission.title, `Mission complete · +${reward.marks} marks`, 5200);
+        this.ui.toast(reward.label, 'accent', 5600);
+        if (nextMission) this.ui.toast(`Next lead · ${nextMission.title}`, 'default', 5200);
+        this.saveProgress();
+      }),
+      missions.on('chapterCompleted', () => {
+        const ending = this.story.ending();
+        if (!ending) return;
+        this.completed = true;
+        this.pendingEnding = true;
+        this.audio.gateEnergised();
+        this.ui.hud.banner(ending.title, ending.subtitle, 11000);
+        this.ui.toast(ending.epitaph, 'accent', 11000);
+        this.ui.toast('Open the journal (J) to revisit the chapter and its archive.', 'default', 9000);
+        this.syncStoryState();
+        this.saveProgress();
+      }),
+      missions.on('change', () => this.syncStoryState()),
+    );
+  }
+
+  private syncStoryState(): void {
+    this.storyWorld?.apply(this.story.worldView());
+    if (this.world && this.story.chapterComplete) this.world.setGateEnergy(1);
+    if (this.ui.hud.isActive) {
+      const mission = this.story.currentMission();
+      const count = this.story.objectiveCount();
+      const suffix = count ? `  (${count.count}/${count.required})` : '';
+      const prefix = mission ? `${mission.title} — ` : '';
+      this.ui.hud.setObjective(`${prefix}${this.story.objectiveText()}${suffix}`);
+    }
+    if (this.ui.questLog.isActive && this.world) {
+      this.ui.refreshQuestLog(this.story.journal(this.world.collectibles.collectedCount, this.world.collectibles.total));
+    }
+  }
+
+  private notifyStory(notices: readonly StoryNotice[]): void {
+    for (const notice of notices) {
+      this.ui.toast(notice.text, notice.kind, notice.kind === 'accent' ? 5200 : 3600);
+    }
+  }
+
+  private interactNearest(): void {
+    if (this.state !== 'playing' || !this.player || !this.storyWorld || this.storyModal) return;
+    const nearest = this.storyWorld.nearestInteraction(this.player.position);
+    if (!nearest) return;
+    if (nearest.kind === 'npc') {
+      const session = this.story.beginNpcDialogue(nearest.id);
+      if (!session) {
+        this.ui.toast(`${this.story.npcName(nearest.id)} has nothing more to say.`, 'default', 2400);
+        return;
+      }
+      this.openDialogue(session);
+      return;
+    }
+    const result = this.story.interact(nearest.id);
+    if (result.type === 'dialogue') {
+      this.openDialogue(result.session);
+    } else if (result.type === 'puzzle') {
+      this.openPuzzle(result.puzzle);
+    } else if (result.type === 'pickup') {
+      this.audio.pickup();
+      this.notifyStory(result.notices);
+      this.ui.toast(`${result.label} recovered`, 'accent', 4200);
+      this.syncStoryState();
+      this.saveProgress();
+    } else if (result.type === 'blocked') {
+      this.notifyStory([result.notice]);
+    }
+  }
+
+  private openDialogue(session: DialogueSession): void {
+    if (this.storyModal) return;
+    this.dialogueSession = session;
+    this.storyModal = true;
+    this.input.setEnabled(false);
+    this.input.exitPointerLock();
+    this.ui.hud.hidePrompt();
+    this.ui.hud.dimHints(true);
+    this.ui.showDialogue(session);
+    this.audio.ui();
+  }
+
+  private chooseDialogue(choiceId: string): void {
+    const session = this.dialogueSession;
+    if (!session) return;
+    const step = this.story.choose(session, choiceId);
+    this.notifyStory(step.notices);
+    if (step.close) {
+      this.closeDialogue();
+      return;
+    }
+    if (step.view) {
+      session.view = step.view;
+      this.ui.updateDialogue(step.view);
+    }
+    this.syncStoryState();
+  }
+
+  private closeDialogue(): void {
+    const session = this.dialogueSession;
+    if (!session) {
+      this.ui.hideDialogue();
+      this.leaveStoryModal();
+      return;
+    }
+    this.story.finishDialogue(session);
+    this.dialogueSession = null;
+    this.ui.hideDialogue();
+    this.leaveStoryModal();
+    this.syncStoryState();
+    this.saveProgress();
+    if (this.pendingEnding) {
+      this.pendingEnding = false;
+      window.setTimeout(() => {
+        if (this.state === 'playing' && !this.storyModal && !this.ui.questLog.isActive) this.toggleJournal();
+      }, 1100);
+    }
+  }
+
+  private openPuzzle(puzzle: PuzzleDefinition): void {
+    if (this.storyModal) return;
+    this.activePuzzle = puzzle;
+    this.storyModal = true;
+    this.input.setEnabled(false);
+    this.input.exitPointerLock();
+    this.ui.hud.hidePrompt();
+    this.ui.showPuzzle(puzzle);
+    this.audio.ui();
+  }
+
+  private solvePuzzle(puzzle: PuzzleDefinition): void {
+    if (!this.activePuzzle || this.activePuzzle.id !== puzzle.id) return;
+    const notices = this.story.solvePuzzle(puzzle.id);
+    this.notifyStory(notices);
+    this.audio.gateEnergised();
+    this.syncStoryState();
+    this.saveProgress();
+  }
+
+  private closePuzzle(): void {
+    this.activePuzzle = null;
+    this.ui.hidePuzzle();
+    this.leaveStoryModal();
+    this.syncStoryState();
+    this.saveProgress();
+  }
+
+  private toggleJournal(): void {
+    if (this.ui.questLog.isActive) {
+      this.closeJournal();
+      return;
+    }
+    if (this.state !== 'playing' || this.storyModal || !this.world) return;
+    this.storyModal = true;
+    this.input.setEnabled(false);
+    this.input.exitPointerLock();
+    this.ui.hud.hidePrompt();
+    this.ui.showQuestLog(this.story.journal(this.world.collectibles.collectedCount, this.world.collectibles.total));
+    this.audio.ui();
+  }
+
+  private closeJournal(): void {
+    this.ui.hideQuestLog();
+    this.leaveStoryModal();
+  }
+
+  private leaveStoryModal(): void {
+    this.storyModal = false;
+    this.ui.hud.dimHints(false);
+    if (this.state === 'playing') {
+      this.input.setEnabled(true);
+      if (!isTouchDevice()) void this.input.requestPointerLock();
+    }
+  }
+
+  private scanRange(): number {
+    return this.story.hasUpgrade('survey-lens') ? 70 : 58;
+  }
+
   private scanCreature(): void {
     if (this.state !== 'playing' || !this.player || !this.world || !this.camera) return;
     const report =
       this.encounterTimer > 0 && this.encounterTargetId
         ? this.world.creatures.scanById(this.encounterTargetId, this.player.position)
-        : this.world.creatures.scan(this.player.position, this.camera.yaw);
+        : this.world.creatures.scan(this.player.position, this.camera.yaw, this.scanRange());
     if (!report) {
       if (this.world.creatures.noteEmptyScan()) {
         this.ui.toast('No robotic signature inside the scan cone', 'warn', 2400);
@@ -566,6 +818,7 @@ export class Game {
       return;
     }
     this.ui.hud.showScan(report);
+    this.story.scan(report.kind);
     this.audio.scan();
     if (report.firstScan) {
       this.ui.toast(`${report.name} catalogued · ${report.scanned}/${report.total} species`, 'accent', 5000);
@@ -586,7 +839,8 @@ export class Game {
     this.saveProgress();
     this.audio.pickup();
     this.ui.hud.setShards(this.world.collectibles.collectedCount, this.world.collectibles.total);
-    this.ui.hud.setObjective(this.objectiveText());
+    this.story.setShards(this.world.collectibles.collectedCount);
+    this.syncStoryState();
     this.ui.toast(
       `${shard.name} recovered · ${this.world.collectibles.collectedCount}/${this.world.collectibles.total}`,
       'accent',
@@ -600,7 +854,7 @@ export class Game {
 
   private triggerPulse(): void {
     if (this.state !== 'playing' || !this.player || !this.world || this.pulseCooldown > 0) return;
-    this.pulseCooldown = 3.2;
+    this.pulseCooldown = this.story.hasUpgrade('resonance-capacitor') ? 2.2 : 3.2;
     this.audio.pulse();
     const position = this.player.position;
     this.world.atmosphere.triggerPulse(position.x, position.y, position.z);
@@ -636,18 +890,37 @@ export class Game {
   }
 
   private objectiveText(): string {
-    if (!this.world) return 'Recover the five Echo Shards.';
-    const remaining = this.world.collectibles.total - this.world.collectibles.collectedCount;
-    if (remaining <= 0) return 'All echoes recovered. Return to the Echo Gate and carry them home.';
-    return `Recover the Echo Shards. ${remaining} signal${remaining === 1 ? '' : 's'} remain in the valley. Follow the compass.`;
+    return this.story.objectiveText();
   }
 
-  private progressSummary(): { collected: number; total: number; playtime: number; hasProgress: boolean } {
+  private progressSummary(): {
+    collected: number;
+    total: number;
+    playtime: number;
+    hasProgress: boolean;
+    mission: {
+      title: string;
+      objective: string;
+      mainComplete: number;
+      mainTotal: number;
+      marks: number;
+      ending: string | null;
+    };
+  } {
+    const ending = this.story.ending();
     return {
       collected: this.progress.value.collected.length,
       total: SHARD_LOCATIONS.length,
       playtime: this.progress.value.playtime,
-      hasProgress: this.progress.hasProgress,
+      hasProgress: this.progress.hasProgress || this.story.missions.hasProgress,
+      mission: {
+        title: this.story.missionTitle(),
+        objective: this.story.objectiveText(),
+        mainComplete: this.story.missions.mainCompleted,
+        mainTotal: MAIN_MISSION_IDS.length,
+        marks: this.story.marks,
+        ending: ending?.title ?? null,
+      },
     };
   }
 
@@ -743,6 +1016,7 @@ export class Game {
     this.progress.setPosition(this.player.position.x, this.player.position.z);
     this.progress.setPlaytime(this.elapsed);
     this.progress.save();
+    this.story.missions.save();
   }
 
   private bindGlobalErrorHandling(): void {
@@ -828,6 +1102,7 @@ export class Game {
     for (const off of this.disposeHandlers) off();
     this.disposeHandlers.length = 0;
     this.input.dispose();
+    this.storyWorld?.dispose();
     this.world?.dispose();
     this.ui.dispose();
     this.engine?.destroy();

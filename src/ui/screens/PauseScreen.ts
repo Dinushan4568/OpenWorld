@@ -42,6 +42,7 @@ export class PauseScreen extends Screen {
       el('div', { class: 'pause__keys' }, [
         el('div', {}, [el('span', { text: 'Move' }), el('kbd', { text: 'W A S D' })]),
         el('div', {}, [el('span', { text: 'Run · Jump · Pulse' }), el('span', {}, [el('kbd', { text: 'SHIFT' }), ' ', el('kbd', { text: 'SPACE' }), ' ', el('kbd', { text: 'E' })])]),
+        el('div', {}, [el('span', { text: 'Interact · Journal' }), el('span', {}, [el('kbd', { text: 'R' }), ' ', el('kbd', { text: 'J' })])]),
         el('div', {}, [el('span', { text: 'Look · Zoom' }), el('span', {}, [el('kbd', { text: 'MOUSE' }), ' ', el('kbd', { text: 'WHEEL' })])]),
       ]),
       el('div', { class: 'pause__actions' }, [

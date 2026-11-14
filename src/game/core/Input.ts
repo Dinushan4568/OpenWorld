@@ -6,6 +6,8 @@ export interface InputCallbacks {
   onPause: () => void;
   onPulse: () => void;
   onScan: () => void;
+  onInteract?: () => void;
+  onJournal?: () => void;
   onToggleFps: () => void;
   onToggleMute: () => void;
   onPointerLockLost: () => void;
@@ -93,6 +95,12 @@ export class InputManager {
     }
     if (event.code === 'KeyF' && !event.repeat) {
       this.callbacks.onScan();
+    }
+    if (event.code === 'KeyR' && !event.repeat) {
+      this.callbacks.onInteract?.();
+    }
+    if (event.code === 'KeyJ' && !event.repeat) {
+      this.callbacks.onJournal?.();
     }
     if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(event.code)) {
       event.preventDefault();

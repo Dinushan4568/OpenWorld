@@ -14,6 +14,14 @@ export interface ProgressSummary {
   total: number;
   playtime: number;
   hasProgress: boolean;
+  mission?: {
+    title: string;
+    objective: string;
+    mainComplete: number;
+    mainTotal: number;
+    marks: number;
+    ending: string | null;
+  };
 }
 
 interface MenuEntry {
@@ -120,10 +128,17 @@ export class MainMenu extends Screen {
 
     if (summary.hasProgress) {
       const remaining = Math.max(0, SHARD_LOCATIONS.length - summary.collected);
+      const mission = summary.mission;
       const entry = this.makeEntry(
         1,
         'Continue',
-        remaining === 0 ? 'return to the gate' : `${summary.collected}/${SHARD_LOCATIONS.length} shards`,
+        mission
+          ? mission.ending
+            ? 'chapter complete · revisit the journal'
+            : `${mission.mainComplete}/${mission.mainTotal} main missions`
+          : remaining === 0
+            ? 'return to the gate'
+            : `${summary.collected}/${SHARD_LOCATIONS.length} shards`,
         () => this.callbacks.onPlay('continue'),
         true,
       );
@@ -133,10 +148,18 @@ export class MainMenu extends Screen {
       );
       this.entries.push(this.makeEntry(3, 'Credits', GAME.studio, () => this.callbacks.onCredits()));
       this.entries.push(this.makeEntry(4, 'New expedition', 'restart the valley', () => this.callbacks.onPlay('new')));
-      this.continueNote.textContent = `${summary.collected} of ${SHARD_LOCATIONS.length} echoes recovered`;
-      this.objective.textContent = `Expedition in progress · ${formatDuration(summary.playtime)} elapsed · ${remaining} signal${
-        remaining === 1 ? '' : 's'
-      } remaining.`;
+      this.continueNote.textContent = mission
+        ? `${mission.title} · ${mission.mainComplete}/${mission.mainTotal} main missions · ${mission.marks} marks`
+        : `${summary.collected} of ${SHARD_LOCATIONS.length} echoes recovered`;
+      this.objective.textContent = mission
+        ? mission.ending
+          ? `${mission.ending} · ${formatDuration(summary.playtime)} elapsed · open the journal to revisit Chapter One.`
+          : `${mission.objective} ${formatDuration(summary.playtime)} elapsed · ${remaining} signal${
+              remaining === 1 ? '' : 's'
+            } remaining.`
+        : `Expedition in progress · ${formatDuration(summary.playtime)} elapsed · ${remaining} signal${
+            remaining === 1 ? '' : 's'
+          } remaining.`;
     } else {
       this.entries.push(
         this.makeEntry(1, 'Play', 'begin expedition', () => this.callbacks.onPlay('new'), true),

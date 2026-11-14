@@ -9,6 +9,10 @@ valley into a living region: an always-descending Crystal River with two waterfa
 scatter across five distinct regions, a full day/night cycle, and the ruins, streets and research
 station that fill them. Phase 04 adds the valley's robotic wildlife: four original machine species
 with their own bodies, patrols, personalities, scannable weaknesses and cinematic first encounters.
+Phase 05 adds the story layer: an original Chapter One with three main missions, three side missions,
+two ancient-technology puzzles, three characters, branching dialogue, a mission journal, a codex of
+recovered memories and two endings. Mission progress is saved locally and every mission is playable
+from the world, not just described in data.
 
 Everything is original work. The project is inspired by the *feeling* of exploring a vast, overgrown
 world — it does not use, copy or reproduce any copyrighted characters, assets, environments, stories
@@ -31,7 +35,7 @@ The dev server binds `0.0.0.0` so it also works behind the sandbox preview proxy
 ```bash
 npm run build        # typecheck + production bundle into dist/
 npm run preview      # serve the production bundle
-npm test             # 126 unit/DOM/integration tests (Vitest)
+npm test             # 145 unit/DOM/integration tests (Vitest)
 npm run typecheck    # tsc --noEmit
 npm run assets       # regenerate the GLB prop library + the Wayfarer character
 ```
@@ -51,12 +55,99 @@ WebGPU first and falls back to WebGL 2 automatically.
 | Jump | `Space` | jump button |
 | Echo pulse | `E` | pulse button |
 | Scan robotic creature | `F` | scan button |
+| Interact / talk / read | `R` | use button |
+| Mission journal | `J` | log button |
 | Pause / resume | `Esc` | pause button |
 | Toggle FPS + renderer | `F3` | — |
 | Mute audio | `M` | — |
 
 Settings (display, camera, audio, accessibility) are reachable from the main menu and the pause
 screen, apply immediately and persist to `localStorage`.
+
+---
+
+## What Phase 05 adds — Chapter One, the Silence That Answers
+
+The valley did not lose its people. It stored them.
+
+Four hundred and twelve years ago the **Quiet** — a solar winter — made the surface uninhabitable.
+The Halcyon Compact copied the population of Mirrorwater into the **Echo Lattice** and asked a
+caretaker to wait for a witness. The witness never came. The machines kept tending an empty world.
+
+You play an expedition archivist who walks into that waiting. **Iona Vale** has listened to the ruins
+for thirty years; **Kesh Adeyemi**, nine fingers and four missing caches, knows the city better than
+she admits; **SABLE-9** has kept the Continuity Vault alone since the last technician stopped
+answering. Their chapter ends at the Echo Gate with the Choir of 41,892 stored voices — carry them
+home as memory, or open the lattice and let them return.
+
+### Missions and objectives
+
+All six missions are authored in `src/game/story/content.ts`, tracked by the engine-free
+`MissionSystem`, and completed through real world interactions.
+
+| Mission | Type | Given by | Objectives | Reward |
+| --- | --- | --- | --- | --- |
+| **The Cartographer's Silence** | Main | Iona Vale | Speak with Iona · recover Mara Vale's survey ledger · return it | +40 marks · Survey Lens (scan range 58 → 70 m) |
+| **The Vault That Waited** | Main | Iona Vale | Reach Station Theta · find SABLE-9 · align the Continuity Lock · take the key · report back | +80 marks · Resonance Capacitor (pulse cooldown 3.2 → 2.2 s) |
+| **The Witness Array** | Main | Iona Vale | Recover all five Echo Shards · meet Iona at the gate · align the Witness Array · answer the Choir | +150 marks · the Continuity Archive |
+| **The Surveyor's Shadow** | Side | Iona Vale | Recover three survey stakes · return them | +35 marks · Mara Vale's bearings |
+| **Nine-Fingers' Bargain** | Side | Kesh Adeyemi | Recover three salvage caches · return them | +45 marks · Kesh's field kit |
+| **Caretaker's Memory** | Side | SABLE-9 | Scan a Scuttler, Grazer and Drifter · return the fragments | +60 marks · Caretaker Cipher |
+
+Objective kinds are `talk`, `reach`, `interact`, `scan`, `shards`, `puzzle` and `choice`. The HUD
+shows the tracked objective, progress counters and a compass marker; the journal (`J`) lists every
+main and side mission, objective state, reward, carried relic and recovered archive fragment.
+Completing a mission awards marks, items, codex entries and, for the main thread, a permanent
+gameplay upgrade.
+
+### Dialogue, characters and story progression
+
+- Branching conversations are data (`DialogueDefinition` → nodes → choices → effects), with
+  requirements for mission state, flags and chapter completion. Higher-priority conversations
+  replace repeats, so Iona's request changes after the ledger, after the vault and after the
+  ending. Choices can set flags, give items, add codex entries, start missions, move a character
+  and finally record an ending.
+- The dialogue overlay supports mouse and keyboard (numbers `1–4`, `Esc`), keeps focus inside the
+  conversation, and frames the speaker's name, role and topic.
+- Three original characters have bespoke world presence: Iona's staff, satchel and amber signal;
+  Kesh's pack and hovering drone; SABLE-9's projector plinth, holographic bust and rotating rings.
+  They turn toward the player, carry quest markers and relocate as the story demands.
+- Story progression is a versioned local save (`eotlw.story.v1`) holding active/completed missions,
+  per-objective counters and scanned targets, flags, marks, items, codex, seen conversations,
+  read memorials and the chosen ending. Corrupt or old data is sanitised, and an interrupted save
+  repairs itself to the next unlocked mission.
+
+### Ancient technology puzzles
+
+Two deterministic three-dial mechanisms use the fiction of the Continuity Project:
+- **The Continuity Lock** at Station Theta — *"second note, first silence, fourth light."*
+- **The Witness Array** at the Echo Gate — *"what the valley kept, what the vault lost, what the
+  witness carries."*
+
+Each dial cycles symbols; the interface supplies the remembered cadence, reports a failed alignment
+without punishment, and can be left at any time. Solving the correct combination completes the
+current objective and persists immediately.
+
+### Environmental storytelling
+
+- Five readable memorials carry recorded voices from before the Quiet (the Sunken Plaza, Glasshouse
+  Terraces, Station Theta, Mother Tree and Mirrorwater lake). They are permanent, optional archive
+  fragments and each adds a codex entry.
+- The survey ledger, survey stakes, salvage caches, continuity key and gate witness are physical
+  objects placed on the terrain, hidden until their mission makes them relevant and removed when
+  recovered. Their lights, rings, holograms and idle motion make the valley's ancient technology
+  legible without a quest arrow.
+- Codex entries cover the Quiet, the Halcyon Compact, the Echo Lattice, the caretakers, the Choir,
+  the gate and the characters. The journal keeps them after the chapter ends.
+
+### Both endings
+
+The final choice is permanent in the save and reflected in the ending card and journal:
+- **The Names We Carry** (`preserve`) — the Choir becomes a library, carried home as memory.
+- **The Long Return** (`broadcast`) — the lattice reopens and the valley is no longer quiet.
+
+After the ending, the world remains explorable, the journal retains the full chapter and the gate
+stays lit.
 
 ---
 
@@ -346,7 +437,7 @@ character's motion is synthesised in TypeScript rather than baked into animation
 
 ## Testing
 
-`npm test` runs 127 tests across nineteen suites:
+`npm test` runs 145 tests across twenty-three suites:
 
 - `math` / `heightfield` / `settings` / `assets` / `ui` / `boot` — the Phase 01 coverage: damping and
   angle maths, deterministic terrain, settings/progress sanitisation, glTF validity and manifests,
@@ -387,6 +478,16 @@ character's motion is synthesised in TypeScript rather than baked into animation
 - `creatures-runtime` — a headless PlayCanvas null device builds all nine bodies, ticks them for
   twenty seconds without leaving the terrain, scans a specimen through the camera cone, dazes a
   machine with the pulse, frames a first encounter and disposes the rig cleanly.
+- `story-flow` — the whole of Chapter One without a renderer: all six missions in one run, both
+  endings, reward/mark accounting, journal completion, side missions, save/reload and corrupt-save
+  recovery, and the fact that optional memorials never duplicate their archive entry.
+- `story-state` — mission sanitisation, overlap repair, interrupt recovery, reward idempotency and a
+  fresh-story reset.
+- `story-world` — headless PlayCanvas builds all three characters and sixteen story objects, checks
+  every placement is grounded and interactable, plays the main chapter through proximity prompts and
+  real objects, and walks every side objective, character and memorial.
+- `story-ui` — dialogue rendering and keyboard/number responses, both puzzle dial states and the
+  single-fire solve callback, and the journal's missions, objectives, rewards and archive.
 
 Additional verification performed: `tsc --noEmit` (clean), `vite build` (clean), and dev-server
 `curl` checks for `/`, `/src/main.ts`, `/favicon.svg`, `/assets/models/manifest.json`, the prop GLBs
@@ -417,7 +518,7 @@ Run the dev server, open the game, then visit `/?range=1`:
 
 ---
 
-## Known limits (Phase 04)
+## Known limits (Phase 05)
 
 - The character is an authored, low-poly, jointed figure (17.7k triangles) — a stylised expedition
   suit rather than a scanned actor. It is not skinned and has no baked clips: motion is procedural,
@@ -426,8 +527,11 @@ Run the dev server, open the game, then visit `/?range=1`:
   prop density, not terrain tessellation.
 - The river is a carved corridor, not a fluid simulation: flow is scrolling normal maps and the two
   falls are authored meshes, so there is no buoyancy, current push or swimming.
-- One objective loop; no combat, dialogue, inventory or vehicles. Robotic creatures cannot be
-  damaged or defeated — the Echo pulse only dazes them, and they always reboot.
+- One authored chapter. Story content is finite; there is no procedural quest generator, combat,
+  vehicle or companion system. Robotic creatures cannot be damaged or defeated — the Echo pulse
+  only dazes them, and they always reboot.
+- Dialogue is presented as text with a speaker card; there is no voice acting or facial animation.
+  SABLE-9's hologram and the two puzzles are stylised interfaces rather than simulated systems.
 - Collision uses vertical cylinders, so overhangs, thin diagonal walls and sloped prop surfaces are
   approximated. Walkable tops are circles; small props are intentionally left non-solid.
 - Position is saved at most every eight seconds and on pause/quit, so a hard tab kill can lose a few
@@ -436,6 +540,8 @@ Run the dev server, open the game, then visit `/?range=1`:
   jump, pulse, scan and pause.
 - Streamed chunks are built on the main thread as the player crosses a boundary, so the first pass
   into a new region can hitch for a frame while props and colliders are created.
+- Chapter progress, settings and shard position are three separate local saves. Story NPCs and props
+  are not streamed; all nineteen story objects and three characters stay resident for the session.
 - Creatures avoid solids and steep ground through local probing rather than pathfinding, so a very
   narrow gap or a perfectly walled-in patrol point may be skipped by the 18 s waypoint timeout. They
   have no rigid-body collision with each other or the player.
@@ -443,4 +549,4 @@ Run the dev server, open the game, then visit `/?range=1`:
 
 ---
 
-*Echoes of the Lost World — Phase 04 · v0.4.0*
+*Echoes of the Lost World — Phase 05 · v0.5.0*

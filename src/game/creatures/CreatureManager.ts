@@ -221,8 +221,8 @@ export class CreatureManager extends Emitter<CreatureManagerEvents> {
   }
 
   /** True when something scan-able is inside the cone — used for the HUD prompt. */
-  hasScanCandidate(origin: { x: number; y: number; z: number }, yaw: number): boolean {
-    return this.pickScanTarget(origin, yaw, SCAN_RANGE) !== null;
+  hasScanCandidate(origin: { x: number; y: number; z: number }, yaw: number, maxDistance = SCAN_RANGE): boolean {
+    return this.pickScanTarget(origin, yaw, maxDistance) !== null;
   }
 
   /** Throttled feedback line for scanning empty air. */
