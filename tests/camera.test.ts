@@ -53,6 +53,25 @@ describe('third-person camera', () => {
     expect(inverted.pitch).toBeLessThan(0);
   });
 
+  it('frames a point of interest for cinematic encounters, then releases', () => {
+    const { rig } = cameraRig();
+    expect(rig.framing).toBe(false);
+    rig.frameOn({ x: 20, y: 6, z: -10 }, { duration: 1, radius: 9, height: 2 });
+    expect(rig.framing).toBe(true);
+    rig.update(1 / 60, { x: 0, y: 0, z: 0 }, { sprinting: false, wading: false, speed: 0 });
+    for (let i = 0; i < 30; i += 1) {
+      rig.update(1 / 60, { x: 0, y: 0, z: 0 }, { sprinting: false, wading: false, speed: 0 });
+    }
+    expect(rig.framing).toBe(true);
+    for (let i = 0; i < 45; i += 1) {
+      rig.update(1 / 60, { x: 0, y: 0, z: 0 }, { sprinting: false, wading: false, speed: 0 });
+    }
+    expect(rig.framing).toBe(false);
+    rig.frameOn({ x: 0, y: 0, z: 0 }, { duration: 1 });
+    rig.clearFrame();
+    expect(rig.framing).toBe(false);
+  });
+
   it('clamps pitch and zoom to the configured limits', () => {
     const { rig } = cameraRig();
     for (let i = 0; i < 60; i++) rig.applyLook(0, 400, 1, false);

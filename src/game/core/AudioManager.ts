@@ -248,6 +248,34 @@ export class AudioManager {
     });
   }
 
+  /** Soft two-tone chirp when the survey scanner resolves a specimen. */
+  scan(): void {
+    this.burst({ duration: 0.16, frequency: 980, endFrequency: 1480, gain: 0.055, type: 'triangle' });
+    window.setTimeout(
+      () => this.burst({ duration: 0.5, frequency: 1560, gain: 0.04, echo: 0.55, type: 'sine' }),
+      90,
+    );
+  }
+
+  /** Synthesised mechanical call; each species has its own register. */
+  creatureCall(kind: 'scuttler' | 'grazer' | 'drifter' | 'warden', alarmed: boolean): void {
+    const voices: Record<string, [number, number, OscillatorType, number]> = {
+      scuttler: [540, 760, 'square', 0.03],
+      grazer: [64, 108, 'sawtooth', 0.09],
+      drifter: [980, 1420, 'triangle', 0.035],
+      warden: [150, 92, 'sawtooth', 0.055],
+    };
+    const [start, end, type, gain] = voices[kind];
+    const duration = alarmed ? 0.7 : 0.45;
+    this.burst({ duration, frequency: start, endFrequency: end, gain, type, echo: 0.5 });
+    if (alarmed) {
+      window.setTimeout(
+        () => this.burst({ duration: 0.4, frequency: end, endFrequency: start, gain: gain * 0.7, type, echo: 0.7 }),
+        180,
+      );
+    }
+  }
+
   ui(): void {
     this.burst({ duration: 0.08, frequency: 1320, gain: 0.045, type: 'triangle' });
   }

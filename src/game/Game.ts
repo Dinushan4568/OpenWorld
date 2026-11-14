@@ -8,6 +8,7 @@ import { PlayerController } from './player/PlayerController';
 import { ThirdPersonCamera } from './player/ThirdPersonCamera';
 import { UiRoot, type UiCallbacks } from '../ui/UiRoot';
 import type { CompassMarker } from '../ui/screens/Hud';
+import { SPECIES } from './creatures/species';
 import type { PauseStats } from '../ui/screens/PauseScreen';
 import { World } from './world/World';
 
@@ -48,6 +49,8 @@ export class Game {
   private fps = 0;
   private saveTimer = 0;
   private pulseCooldown = 0;
+  private encounterTimer = 0;
+  private encounterTargetId: string | null = null;
   private lastArea = '';
   private completed = false;
   private starting = false;
@@ -67,6 +70,7 @@ export class Game {
     this.input = new InputManager(this.canvas, {
       onPause: () => this.togglePause(),
       onPulse: () => this.triggerPulse(),
+      onScan: () => this.scanCreature(),
       onToggleFps: () => this.settings.set('showFps', !this.settings.get('showFps')),
       onToggleMute: () => this.toggleMute(),
       onPointerLockLost: () => {
@@ -80,6 +84,7 @@ export class Game {
       onJump: () => this.input.setTouchJump(),
       onSprint: (active: boolean) => this.input.setTouchSprint(active),
       onPulse: () => this.triggerPulse(),
+      onScan: () => this.scanCreature(),
       onPause: () => this.togglePause(),
     };
 
@@ -136,6 +141,7 @@ export class Game {
         this.ui.updateLoading(stage, 0.52 + progress * 0.44);
       });
       this.world = world;
+      this.bindCreatureEvents(world);
 
       const spawn = world.spawn;
       const startHeading = spawn.heading;
@@ -202,6 +208,10 @@ export class Game {
     try {
       void this.audio.start();
 
+      this.encounterTimer = 0;
+      this.encounterTargetId = null;
+      this.ui.hud.setCinematic(false);
+      this.camera?.clearFrame();
       if (mode === 'new') {
         this.progress.clear();
         this.progress.save();
@@ -311,6 +321,12 @@ export class Game {
     await this.ui.fadeOut(380);
     this.ui.hideHud();
     this.player.root.enabled = false;
+    this.encounterTimer = 0;
+    this.encounterTargetId = null;
+    this.ui.hud.setCinematic(false);
+    this.ui.hud.hideScan();
+    this.ui.hud.setDanger(null);
+    this.camera?.clearFrame();
     this.camera?.setCinematic(true);
     this.ui.refreshMenuProgress(this.progressSummary());
     this.ui.showMenu(this.progressSummary());
@@ -349,14 +365,31 @@ export class Game {
 
     if (this.state !== 'playing') return;
 
-    const look = this.input.consumeLook();
-    this.camera.applyLook(look.x, look.y, this.settings.get('sensitivity'), this.settings.get('invertY'));
-    const wheel = this.input.consumeWheel();
-    if (wheel !== 0) this.camera.zoom(wheel);
+    if (this.encounterTimer > 0) {
+      this.encounterTimer = Math.max(0, this.encounterTimer - dt);
+      if (this.encounterTimer === 0) this.endEncounterCinematic();
+    }
+    const frozen = this.encounterTimer > 0;
 
-    const axis = this.input.moveAxis();
-    const sprinting = this.input.wantsSprint;
-    const jump = this.input.wantsJump;
+    let sprinting = false;
+    let jump = false;
+    let axis = { x: 0, y: 0 };
+    if (!frozen) {
+      const look = this.input.consumeLook();
+      this.camera.applyLook(look.x, look.y, this.settings.get('sensitivity'), this.settings.get('invertY'));
+      const wheel = this.input.consumeWheel();
+      if (wheel !== 0) this.camera.zoom(wheel);
+      axis = this.input.moveAxis();
+      sprinting = this.input.wantsSprint;
+      jump = this.input.wantsJump;
+    } else {
+      // Cinematic encounter: the player stands still while the camera frames
+      // the machine. Look and wheel are drained so they do not fire on release.
+      this.input.consumeLook();
+      this.input.consumeWheel();
+      this.input.moveAxis();
+    }
+
     this.player.update(dt, {
       moveX: axis.x,
       moveY: axis.y,
@@ -429,6 +462,26 @@ export class Game {
       );
     }
     this.ui.hud.setFps(`${this.fps.toFixed(0)} FPS · ${this.gpuLabel()}`, this.settings.get('showFps'));
+
+    const wildlife = this.world.creatures;
+    if (wildlife) {
+      this.ui.hud.setSpecimens(wildlife.scannedSpecies, wildlife.totalSpecies);
+      const threat = wildlife.nearestThreat(position);
+      this.ui.hud.setDanger(
+        threat
+          ? `${threat.name.toUpperCase()} · ${threat.stateLabel.toUpperCase()} · ${Math.round(threat.distance)} M`
+          : null,
+        threat && threat.threat >= 4 ? 'alert' : 'warn',
+      );
+      // The gate objective owns the prompt slot until the expedition is over;
+      // after that, scanning stays available for the specimen archive.
+      const gateObjective = this.world.collectibles.allCollected && !this.completed;
+      const inEncounter = this.encounterTimer > 0 && this.encounterTargetId !== null;
+      const scanning = inEncounter || (!gateObjective && wildlife.hasScanCandidate(position, this.camera!.yaw));
+      this.ui.hud.setScanReady(scanning);
+      if (scanning) this.ui.hud.showPrompt(inEncounter ? 'Scan the machine' : 'Scan robotic creature', 'F');
+      else if (!gateObjective) this.ui.hud.hidePrompt();
+    }
   }
 
   private checkArea(): void {
@@ -463,6 +516,70 @@ export class Game {
   /* Interaction                                                        */
   /* ------------------------------------------------------------------ */
 
+  private bindCreatureEvents(world: World): void {
+    const manager = world.creatures;
+    this.disposeHandlers.push(
+      manager.on('encounter', ({ id, kind, title, subtitle, duration, aim }) => {
+        if (this.state !== 'playing' || !this.camera || this.encounterTimer > 0) return;
+        this.encounterTimer = duration;
+        this.encounterTargetId = id;
+        const height = SPECIES[kind].heightMetres;
+        this.camera.frameOn(aim, {
+          duration,
+          radius: Math.max(8, Math.min(24, height * 2.1)),
+          height: Math.max(1.8, height * 0.45),
+        });
+        this.ui.hud.setCinematic(true);
+        this.ui.hud.banner(title, subtitle, Math.min(6000, duration * 1000));
+        this.ui.hud.showPrompt('Scan the machine', 'F');
+        this.ui.toast('New robotic species encountered — scan it for weaknesses', 'accent', 5600);
+        this.audio.creatureCall(kind, true);
+      }),
+      manager.on('call', ({ kind, distance, alarmed }) => {
+        if (this.state !== 'playing' || distance > 72) return;
+        this.audio.creatureCall(kind, alarmed);
+      }),
+      manager.on('reaction', ({ text }) => {
+        if (this.state !== 'playing') return;
+        this.ui.toast(text, 'default', 3000);
+      }),
+      manager.on('specimen', ({ scanned, total }) => {
+        this.ui.hud.setSpecimens(scanned, total);
+        if (scanned >= total) {
+          this.ui.toast('Specimen archive complete · four robotic species catalogued', 'accent', 6200);
+        }
+      }),
+    );
+    this.ui.hud.setSpecimens(manager.scannedSpecies, manager.totalSpecies);
+  }
+
+  private scanCreature(): void {
+    if (this.state !== 'playing' || !this.player || !this.world || !this.camera) return;
+    const report =
+      this.encounterTimer > 0 && this.encounterTargetId
+        ? this.world.creatures.scanById(this.encounterTargetId, this.player.position)
+        : this.world.creatures.scan(this.player.position, this.camera.yaw);
+    if (!report) {
+      if (this.world.creatures.noteEmptyScan()) {
+        this.ui.toast('No robotic signature inside the scan cone', 'warn', 2400);
+      }
+      return;
+    }
+    this.ui.hud.showScan(report);
+    this.audio.scan();
+    if (report.firstScan) {
+      this.ui.toast(`${report.name} catalogued · ${report.scanned}/${report.total} species`, 'accent', 5000);
+    } else {
+      this.ui.toast(`${report.name} re-scanned · ${report.weakness.label}`, 'default', 3000);
+    }
+  }
+
+  private endEncounterCinematic(): void {
+    this.ui.hud.setCinematic(false);
+    this.camera?.clearFrame();
+    this.encounterTargetId = null;
+  }
+
   private onShardCollected(shard: EchoShard): void {
     if (!this.world) return;
     this.progress.addShard(shard.id);
@@ -487,6 +604,18 @@ export class Game {
     this.audio.pulse();
     const position = this.player.position;
     this.world.atmosphere.triggerPulse(position.x, position.y, position.z);
+    const wildlife = this.world.creatures.pulse(position);
+    if (wildlife.affected > 0) {
+      const machines = wildlife.affected === 1 ? 'machine' : 'machines';
+      this.ui.toast(
+        `Echo pulse · ${wildlife.affected} ${machines} dazed${wildlife.calmed > 0 ? ` · ${wildlife.calmed} calmed` : ''}`,
+        'accent',
+        3200,
+      );
+    }
+    if (wildlife.warden) {
+      this.ui.toast('The Warden\'s aegis flares — the pulse only staggers it', 'warn', 4200);
+    }
     const nearest = this.world.collectibles.remaining
       .map((shard) => ({
         shard,

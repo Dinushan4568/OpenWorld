@@ -22,6 +22,7 @@ function harness() {
     onJump: () => {},
     onSprint: () => {},
     onPulse: () => {},
+    onScan: () => {},
     onPause: () => {},
   };
   const ui = new UiRoot(root, store, callbacks, touch);
@@ -29,6 +30,64 @@ function harness() {
 }
 
 describe('UI shell', () => {
+  it('renders a specimen scan, danger readout and encounter letterbox', () => {
+    const { ui, root } = harness();
+    ui.hud.setSpecimens(2, 4);
+    expect(root.querySelector('.hud__specimens')?.textContent).toBe('SPECIMENS 2 / 4');
+
+    ui.hud.setDanger('VERDIGRIS WARDEN · WATCHING YOU · 18 M', 'alert');
+    const danger = root.querySelector('.hud__danger') as HTMLElement;
+    expect(danger.classList.contains('is-visible')).toBe(true);
+    expect(danger.classList.contains('is-alert')).toBe(true);
+    expect(danger.textContent).toContain('VERDIGRIS WARDEN');
+
+    ui.hud.showScan({
+      id: 'grazer-meadow',
+      kind: 'grazer',
+      name: 'Cinderhull Grazer',
+      codename: 'GR-02',
+      classification: 'Heavy grazer · quadrupedal mineral processor',
+      temperament: 'Slow, patient, and utterly certain of its own weight.',
+      behaviour: 'Walks a mineral circuit between meadow crusts.',
+      diet: 'Iron-rich soil crust.',
+      sizeLabel: 'Large — two storeys at the shoulder',
+      massKg: 6800,
+      heightMetres: 6.2,
+      lengthMetres: 10.5,
+      threat: 3,
+      threatLabel: 'Territorial — keep your distance',
+      state: 'patrol',
+      stateLabel: 'Walking patrol',
+      distance: 22,
+      awareness: 0.2,
+      weakness: {
+        category: 'resonance',
+        label: 'Resonance-blind knee servos',
+        clue: 'Its knees tremble in time with the old reactor hum.',
+        exploit: 'Pulse as it crosses the outflow and its stride stalls.',
+      },
+      scanned: 2,
+      total: 4,
+      firstScan: true,
+    });
+    const panel = root.querySelector('.hud__scan') as HTMLElement;
+    expect(panel.classList.contains('is-visible')).toBe(true);
+    expect(panel.textContent).toContain('Cinderhull Grazer');
+    expect(panel.textContent).toContain('Resonance-blind knee servos');
+    expect(panel.textContent).toContain('NEW SPECIMEN');
+    expect(panel.textContent).toContain('Walking patrol');
+
+    ui.hud.setCinematic(true);
+    expect(ui.hud.root.classList.contains('is-cinematic')).toBe(true);
+    ui.hud.setCinematic(false);
+    expect(ui.hud.root.classList.contains('is-cinematic')).toBe(false);
+
+    ui.hud.hideScan();
+    expect(panel.classList.contains('is-visible')).toBe(false);
+    ui.hud.setDanger(null);
+    expect(danger.classList.contains('is-visible')).toBe(false);
+  });
+
   beforeEach(() => {
     vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => window.setTimeout(() => cb(0), 0));
   });

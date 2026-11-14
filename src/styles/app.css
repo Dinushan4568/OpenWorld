@@ -1663,6 +1663,21 @@ input[type='range'].slider:focus-visible {
   color: var(--amber);
 }
 
+.hud__crosshair.is-scan {
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  background: transparent;
+  border: 1px solid var(--bio);
+  box-shadow: 0 0 12px rgba(121, 240, 207, 0.7);
+  animation: scan-reticle 1.4s ease-in-out infinite;
+}
+
+@keyframes scan-reticle {
+  0%, 100% { transform: scale(0.8); opacity: 0.55; }
+  50% { transform: scale(1.15); opacity: 1; }
+}
+
 .hud__crosshair {
   position: absolute;
   left: 50%;
@@ -1998,4 +2013,301 @@ body.is-playing {
 
 body.is-menu {
   cursor: default;
+}
+
+/* ------------------------------------------------------------------ */
+/* Robotic wildlife: specimen scanner, danger readout, encounters     */
+/* ------------------------------------------------------------------ */
+
+.hud__specimens {
+  position: absolute;
+  top: calc(104px + var(--safe-top));
+  right: calc(26px + var(--safe-right));
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  color: rgba(242, 236, 223, 0.42);
+  transition: color 0.4s var(--ease);
+}
+
+.hud__specimens.is-complete {
+  color: var(--bio);
+  text-shadow: 0 0 18px rgba(121, 240, 207, 0.4);
+}
+
+.hud__danger {
+  position: absolute;
+  left: 50%;
+  top: 15%;
+  transform: translate(-50%, -6px);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 14px;
+  border: 1px solid rgba(255, 178, 107, 0.34);
+  background: rgba(14, 9, 5, 0.62);
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  color: var(--amber);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.35s var(--ease), transform 0.35s var(--ease);
+  backdrop-filter: blur(6px);
+  white-space: nowrap;
+}
+
+.hud__danger.is-visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.hud__danger.is-alert {
+  border-color: rgba(255, 96, 72, 0.55);
+  color: #ff8a6d;
+  box-shadow: 0 0 34px rgba(255, 96, 72, 0.16);
+}
+
+.hud__danger-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 10px currentColor;
+  animation: wildlife-beacon 1.6s ease-in-out infinite;
+}
+
+@keyframes wildlife-beacon {
+  0%, 100% { opacity: 0.35; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+
+.hud__scan {
+  position: absolute;
+  top: calc(132px + var(--safe-top));
+  right: calc(26px + var(--safe-right));
+  width: min(360px, 32vw);
+  max-height: min(62vh, 560px);
+  overflow: auto;
+  padding: 18px 20px 16px;
+  border: 1px solid rgba(121, 240, 207, 0.28);
+  border-left: 2px solid var(--bio);
+  background:
+    linear-gradient(180deg, rgba(6, 20, 22, 0.92), rgba(4, 12, 15, 0.86)),
+    radial-gradient(120% 60% at 100% 0%, rgba(121, 240, 207, 0.08), transparent 70%);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45), 0 0 40px rgba(121, 240, 207, 0.06);
+  opacity: 0;
+  transform: translateX(18px);
+  pointer-events: none;
+  transition: opacity 0.35s var(--ease), transform 0.35s var(--ease);
+  z-index: 3;
+}
+
+.hud__scan.is-visible {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.hud__scan-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(242, 236, 223, 0.1);
+}
+
+.hud__scan-code {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.24em;
+  color: var(--bio);
+}
+
+.hud__scan h2 {
+  margin: 4px 0 4px;
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: 21px;
+  letter-spacing: 0.06em;
+  color: var(--ivory);
+}
+
+.hud__scan-class {
+  margin: 0;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(242, 236, 223, 0.5);
+}
+
+.hud__scan-threat {
+  flex: 0 0 auto;
+  max-width: 130px;
+  padding: 5px 8px;
+  border: 1px solid rgba(255, 178, 107, 0.32);
+  font-family: var(--mono);
+  font-size: 8px;
+  line-height: 1.5;
+  letter-spacing: 0.12em;
+  text-align: right;
+  color: var(--amber);
+}
+
+.hud__scan-threat.is-high {
+  border-color: rgba(255, 96, 72, 0.5);
+  color: #ff8a6d;
+}
+
+.hud__scan-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 14px;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(242, 236, 223, 0.08);
+}
+
+.hud__scan-stat {
+  display: grid;
+  gap: 3px;
+}
+
+.hud__scan-stat span {
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 0.18em;
+  color: rgba(242, 236, 223, 0.38);
+}
+
+.hud__scan-stat strong {
+  font-family: var(--mono);
+  font-weight: 400;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--ivory);
+}
+
+.hud__scan-temperament {
+  margin: 12px 0 6px;
+  font-family: var(--serif);
+  font-size: 13px;
+  font-style: italic;
+  line-height: 1.5;
+  color: rgba(242, 236, 223, 0.8);
+}
+
+.hud__scan-behaviour {
+  margin: 0 0 12px;
+  font-size: 10px;
+  line-height: 1.65;
+  letter-spacing: 0.03em;
+  color: rgba(242, 236, 223, 0.58);
+}
+
+.hud__scan-weakness {
+  padding: 12px 12px 11px;
+  border: 1px solid rgba(121, 240, 207, 0.2);
+  background: rgba(121, 240, 207, 0.04);
+}
+
+.hud__scan-weakness h3 {
+  margin: 0 0 8px;
+  font-family: var(--mono);
+  font-size: 8px;
+  font-weight: 400;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--bio);
+}
+
+.hud__scan-clue {
+  margin: 0 0 8px;
+  font-size: 10px;
+  line-height: 1.6;
+  color: rgba(242, 236, 223, 0.72);
+}
+
+.hud__scan-exploit {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.65;
+  color: var(--ivory);
+}
+
+.hud__scan-exploit::before {
+  content: 'TACTIC · ';
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 0.16em;
+  color: var(--amber);
+}
+
+.hud__scan-footer {
+  margin-top: 12px;
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(242, 236, 223, 0.35);
+}
+
+.hud.is-cinematic::before,
+.hud.is-cinematic::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 8vh;
+  background: linear-gradient(180deg, rgba(2, 6, 8, 0.94), rgba(2, 6, 8, 0.72));
+  pointer-events: none;
+  z-index: 2;
+  animation: letterbox-in 0.8s var(--ease) both;
+}
+
+.hud.is-cinematic::before {
+  top: 0;
+}
+
+.hud.is-cinematic::after {
+  bottom: 0;
+  transform: scaleY(-1);
+}
+
+@keyframes letterbox-in {
+  from { opacity: 0; transform: scaleY(0.2); }
+  to { opacity: 1; transform: scaleY(1); }
+}
+
+.hud.is-cinematic .hud__danger {
+  display: none;
+}
+
+.hud.is-cinematic .hud__banner {
+  top: 17%;
+}
+
+.hud.is-cinematic .hud__banner p {
+  color: var(--bio);
+}
+
+.touch__btn--scan {
+  border-color: rgba(255, 178, 107, 0.42);
+  color: var(--amber);
+}
+
+@media (max-width: 860px) {
+  .hud__scan {
+    top: auto;
+    bottom: calc(112px + var(--safe-bottom));
+    right: calc(12px + var(--safe-right));
+    left: calc(12px + var(--safe-left));
+    width: auto;
+    max-height: 46vh;
+  }
+
+  .hud__specimens {
+    display: none;
+  }
 }

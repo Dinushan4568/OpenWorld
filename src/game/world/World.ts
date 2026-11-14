@@ -3,6 +3,7 @@ import { WORLD, type QualityProfile } from '../config';
 import type { AssetManager } from '../core/AssetManager';
 import { createTexture, generateDetailTexture, generateWaterNormalMap } from '../util/textures';
 import { Atmosphere } from './Atmosphere';
+import { CreatureManager } from '../creatures/CreatureManager';
 import { ChunkManager, type ChunkStats } from './ChunkManager';
 import { CivicSites } from './CivicSites';
 import { Collectibles, type EchoShard } from './Collectibles';
@@ -29,6 +30,8 @@ export interface WorldUpdateContext {
   sprinting: boolean;
   speed: number;
   wading: boolean;
+  /** Sneaking reduces the silhouette creatures can resolve. */
+  crouch?: boolean;
   /** False on the menu screen, where shards must not be picked up invisibly. */
   interactive?: boolean;
 }
@@ -65,6 +68,7 @@ export class World {
   dayNight!: DayNight;
   atmosphere!: Atmosphere;
   collectibles!: Collectibles;
+  creatures!: CreatureManager;
   readonly collision = new CollisionWorld();
   testRange: TestRange | null = null;
   spawn: SpawnPoint = { ...WORLD.spawn, y: heightAt(WORLD.spawn.x, WORLD.spawn.z), heading: 0 };
@@ -179,6 +183,10 @@ export class World {
       z: this.spawn.z,
     });
 
+    await stage('Waking the machines', 0.97);
+    this.creatures = new CreatureManager(this.app, this.collision);
+    this.creatures.build();
+
     await stage('Calibrating echo signatures', 0.98);
     this.collectibles = new Collectibles(this.app, this.assets, this.collectedIds);
     this.landmarks.setGateEnergy(this.collectibles.collectedCount / Math.max(1, this.collectibles.total));
@@ -194,6 +202,18 @@ export class World {
     this.lighting.update(context.player.x, context.player.z, context.player.y);
     this.lighting.tick(time);
     this.atmosphere.update(dt, time, context.player, context.yaw);
+    this.creatures.update(dt, time, {
+      player: {
+        x: context.player.x,
+        y: context.player.y,
+        z: context.player.z,
+        speed: context.speed,
+        crouch: context.crouch ?? false,
+        sprinting: context.sprinting,
+      },
+      night: this.dayNight.current.night,
+      interactive: context.interactive !== false,
+    });
     if (context.interactive === false) return null;
     const collected = this.collectibles.update(dt, time, context.player);
     if (collected) {
@@ -221,6 +241,7 @@ export class World {
 
   dispose(): void {
     this.testRange?.dispose();
+    this.creatures?.dispose();
     this.collision.clear();
     this.collectibles?.destroy();
     this.atmosphere?.destroy();

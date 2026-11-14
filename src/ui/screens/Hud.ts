@@ -1,5 +1,6 @@
 import { SHARD_LOCATIONS } from '../../game/config';
 import { el } from '../components/dom';
+import type { ScanReport } from '../../game/creatures/types';
 import { Screen } from './Screen';
 
 export interface CompassMarker {
@@ -35,6 +36,22 @@ export class Hud extends Screen {
   private readonly bannerSub: HTMLElement;
   private readonly waterEl: HTMLElement;
   private readonly crosshair: HTMLElement;
+  private readonly dangerEl: HTMLElement;
+  private readonly dangerText: HTMLElement;
+  private readonly specimensEl: HTMLElement;
+  private readonly scanPanel: HTMLElement;
+  private readonly scanCode: HTMLElement;
+  private readonly scanName: HTMLElement;
+  private readonly scanClass: HTMLElement;
+  private readonly scanThreat: HTMLElement;
+  private readonly scanGrid: HTMLElement;
+  private readonly scanTemperament: HTMLElement;
+  private readonly scanBehaviour: HTMLElement;
+  private readonly scanClue: HTMLElement;
+  private readonly scanExploit: HTMLElement;
+  private readonly scanWeaknessLabel: HTMLElement;
+  private readonly scanFooter: HTMLElement;
+  private scanTimer = 0;
   private readonly ticks: Array<{ bearing: number; element: HTMLElement }> = [];
   private readonly markerElements: HTMLElement[] = [];
   private activeToasts: ToastHandle[] = [];
@@ -80,6 +97,7 @@ export class Hud extends Screen {
       el('div', {}, [el('kbd', { text: 'SHIFT' }), el('span', { text: 'Run' })]),
       el('div', {}, [el('kbd', { text: 'SPACE' }), el('span', { text: 'Vault' })]),
       el('div', {}, [el('kbd', { text: 'E' }), el('span', { text: 'Echo pulse' })]),
+      el('div', {}, [el('kbd', { text: 'F' }), el('span', { text: 'Scan specimen' })]),
       el('div', {}, [el('kbd', { text: 'ESC' }), el('span', { text: 'Pause' })]),
     ]);
     this.promptLabel = el('span', { text: '' });
@@ -92,6 +110,40 @@ export class Hud extends Screen {
     this.waterEl = el('div', { class: 'hud__water', attrs: { 'aria-hidden': 'true' } });
     this.crosshair = el('div', { class: 'hud__crosshair', attrs: { 'aria-hidden': 'true' } });
 
+    this.dangerText = el('span', { class: 'hud__danger-text', text: '' });
+    this.dangerEl = el('div', { class: 'hud__danger', attrs: { 'aria-live': 'polite' } }, [
+      el('span', { class: 'hud__danger-dot', attrs: { 'aria-hidden': 'true' } }),
+      this.dangerText,
+    ]);
+    this.specimensEl = el('div', { class: 'hud__specimens', text: 'SPECIMENS 0 / 4' });
+
+    this.scanCode = el('span', { class: 'hud__scan-code', text: 'SC-00' });
+    this.scanName = el('h2', { text: '' });
+    this.scanClass = el('p', { class: 'hud__scan-class', text: '' });
+    this.scanThreat = el('span', { class: 'hud__scan-threat', text: '' });
+    this.scanGrid = el('div', { class: 'hud__scan-grid' });
+    this.scanTemperament = el('p', { class: 'hud__scan-temperament', text: '' });
+    this.scanBehaviour = el('p', { class: 'hud__scan-behaviour', text: '' });
+    this.scanWeaknessLabel = el('h3', { text: 'Environmental weakness' });
+    this.scanClue = el('p', { class: 'hud__scan-clue', text: '' });
+    this.scanExploit = el('p', { class: 'hud__scan-exploit', text: '' });
+    this.scanFooter = el('div', { class: 'hud__scan-footer', text: '' });
+    this.scanPanel = el('aside', { class: 'hud__scan', attrs: { 'aria-live': 'polite' } }, [
+      el('div', { class: 'hud__scan-head' }, [
+        el('div', {}, [this.scanCode, this.scanName, this.scanClass]),
+        this.scanThreat,
+      ]),
+      this.scanGrid,
+      this.scanTemperament,
+      this.scanBehaviour,
+      el('div', { class: 'hud__scan-weakness' }, [
+        this.scanWeaknessLabel,
+        this.scanClue,
+        this.scanExploit,
+      ]),
+      this.scanFooter,
+    ]);
+
     const tl = el('div', { class: 'hud__tl' }, [this.locationEl, this.coordsEl, this.clockEl, objectiveCard]);
     const tr = el('div', { class: 'hud__tr' }, [this.shardEl, this.statsEl]);
 
@@ -101,6 +153,9 @@ export class Hud extends Screen {
       tl,
       compassWrap,
       tr,
+      this.dangerEl,
+      this.specimensEl,
+      this.scanPanel,
       this.hints,
       this.prompt,
       this.toasts,
@@ -256,6 +311,77 @@ export class Hud extends Screen {
     this.bannerEl.classList.add('is-visible');
     window.clearTimeout(this.bannerTimer);
     this.bannerTimer = window.setTimeout(() => this.bannerEl.classList.remove('is-visible'), duration);
+  }
+
+  /** Compact danger readout used by the wildlife manager. */
+  setDanger(text: string | null, level: 'warn' | 'alert' = 'warn'): void {
+    if (!text) {
+      this.dangerEl.classList.remove('is-visible', 'is-alert');
+      return;
+    }
+    if (this.dangerText.textContent !== text) this.dangerText.textContent = text;
+    this.dangerEl.classList.add('is-visible');
+    this.dangerEl.classList.toggle('is-alert', level === 'alert');
+  }
+
+  /** Highlights the reticle when a robotic signature is inside the scan cone. */
+  setScanReady(ready: boolean): void {
+    this.crosshair.classList.toggle('is-scan', ready);
+  }
+
+  setSpecimens(scanned: number, total: number): void {
+    const text = `SPECIMENS ${scanned} / ${total}`;
+    if (this.specimensEl.textContent !== text) this.specimensEl.textContent = text;
+    this.specimensEl.classList.toggle('is-complete', scanned >= total && total > 0);
+  }
+
+  get scanOpen(): boolean {
+    return this.scanPanel.classList.contains('is-visible');
+  }
+
+  /** Populates the specimen panel with a scan report. */
+  showScan(report: ScanReport): void {
+    this.scanCode.textContent = report.codename;
+    this.scanName.textContent = report.name;
+    this.scanClass.textContent = report.classification;
+    this.scanThreat.textContent = `THREAT ${report.threat} · ${report.threatLabel}`;
+    this.scanThreat.classList.toggle('is-high', report.threat >= 4);
+    this.scanGrid.replaceChildren(
+      ...[
+        ['STATE', report.stateLabel],
+        ['DISTANCE', `${report.distance.toFixed(0)} m`],
+        ['SIZE', report.sizeLabel],
+        ['MASS', `${Math.round(report.massKg).toLocaleString()} kg`],
+        ['HEIGHT', `${report.heightMetres.toFixed(1)} m`],
+        ['AWARENESS', `${Math.round(report.awareness * 100)}%`],
+      ].map(([label, value]) =>
+        el('div', { class: 'hud__scan-stat' }, [
+          el('span', { text: label }),
+          el('strong', { text: value }),
+        ]),
+      ),
+    );
+    this.scanTemperament.textContent = report.temperament;
+    this.scanBehaviour.textContent = report.behaviour;
+    this.scanWeaknessLabel.textContent = `Environmental weakness · ${report.weakness.label}`;
+    this.scanClue.textContent = report.weakness.clue;
+    this.scanExploit.textContent = report.weakness.exploit;
+    this.scanFooter.textContent = report.firstScan
+      ? `NEW SPECIMEN · ${report.scanned} / ${report.total} species catalogued · F to re-scan`
+      : `Specimen ${report.scanned} / ${report.total} species catalogued · F to re-scan`;
+    this.scanPanel.classList.add('is-visible');
+    window.clearTimeout(this.scanTimer);
+    this.scanTimer = window.setTimeout(() => this.scanPanel.classList.remove('is-visible'), 18000);
+  }
+
+  hideScan(): void {
+    window.clearTimeout(this.scanTimer);
+    this.scanPanel.classList.remove('is-visible');
+  }
+
+  /** Letterbox the HUD for a cinematic encounter. */
+  setCinematic(active: boolean): void {
+    this.root.classList.toggle('is-cinematic', active);
   }
 
   /** Fades control hints after a while, then re-reveals them if the player idles. */
