@@ -1,19 +1,21 @@
 import type { AppBase } from 'playcanvas';
 import { WORLD, type QualityProfile } from '../config';
 import type { AssetManager } from '../core/AssetManager';
-import { distance2D } from '../util/math';
 import { createTexture, generateDetailTexture, generateWaterNormalMap } from '../util/textures';
 import { Atmosphere } from './Atmosphere';
+import { ChunkManager, type ChunkStats } from './ChunkManager';
+import { CivicSites } from './CivicSites';
 import { Collectibles, type EchoShard } from './Collectibles';
+import { DayNight } from './DayNight';
 import { Landmarks } from './Landmarks';
 import { Lighting, LIGHTING_TARGET } from './Lighting';
-import { Props, type ScatterStats } from './Props';
+import { River } from './River';
 import { SkySystem } from './Sky';
+import { SkyDome } from './SkyDome';
 import { Terrain } from './Terrain';
-import { Vegetation } from './Vegetation';
 import { Water } from './Water';
 import { CollisionWorld } from './collision';
-import { findSpawnPoint, heightAt } from './heightfield';
+import { areaNameAt, findSpawnPoint, heightAt } from './heightfield';
 import { TestRange } from './TestRange';
 
 export interface WorldStage {
@@ -36,6 +38,10 @@ const nextFrame = (): Promise<void> => new Promise((resolve) => requestAnimation
 export interface WorldOptions {
   /** Build the temporary controller validation range (?range=1). */
   testRange?: boolean;
+  /** Start hour of the day/night cycle (0-24). */
+  startHour?: number;
+  /** Real minutes per in-game day; 0 freezes time. */
+  dayLengthMinutes?: number;
 }
 
 export interface SpawnPoint {
@@ -51,13 +57,14 @@ export class World {
   sky!: SkySystem;
   water!: Water;
   lighting!: Lighting;
+  river!: River;
   landmarks!: Landmarks;
-  props!: Props;
-  vegetation!: Vegetation;
+  chunks!: ChunkManager;
+  civic!: CivicSites;
+  dome!: SkyDome;
+  dayNight!: DayNight;
   atmosphere!: Atmosphere;
   collectibles!: Collectibles;
-  scatterStats: ScatterStats = { placed: 0, skipped: 0, byType: {} };
-  sunDirection: [number, number, number] = [0, 1, 0];
   readonly collision = new CollisionWorld();
   testRange: TestRange | null = null;
   spawn: SpawnPoint = { ...WORLD.spawn, y: heightAt(WORLD.spawn.x, WORLD.spawn.z), heading: 0 };
@@ -80,6 +87,14 @@ export class World {
     this.profile = profile;
     this.collectedIds = collectedIds;
     this.options = options;
+  }
+
+  get scatterStats(): ChunkStats {
+    return this.chunks.stats;
+  }
+
+  get clockLabel(): string {
+    return this.dayNight.clockLabel;
   }
 
   async build(onStage: (stage: WorldStage) => void): Promise<void> {
@@ -109,50 +124,62 @@ export class World {
       name: 'water-detail',
     });
 
-    await stage('Painting the sky', 0.12);
+    await stage('Painting the sky', 0.1);
     this.sky = new SkySystem(this.app, this.profile.anisotropy);
-    this.sunDirection = this.sky.setup.sunDirection;
 
-    await stage('Raising the Mirrorwater basin', 0.3);
+    await stage('Raising the basin', 0.22);
     this.terrain = new Terrain(this.app, grass);
 
-    await stage('Filling the lake', 0.44);
+    await stage('Filling Mirrorwater', 0.32);
     this.water = new Water(this.app, waterNormal, waterDetail);
 
-    await stage('Positioning the sun', 0.52);
-    this.lighting = new Lighting(this.app, this.sunDirection, this.profile, LIGHTING_TARGET);
-    this.sky.applyFog(
-      [WORLD.fogColor[0], WORLD.fogColor[1], WORLD.fogColor[2]],
-      this.profile.drawDistance * 0.16,
-      this.profile.drawDistance * 1.35,
-    );
+    await stage('Positioning the sun', 0.4);
+    this.lighting = new Lighting(this.app, this.sky.setup.sunDirection, this.profile, LIGHTING_TARGET);
 
-    await stage('Unearthing the ruins', 0.62);
+    await stage('Carving the Crystal River', 0.48);
+    this.river = new River(this.app, waterNormal, waterDetail);
+
+    await stage('Unearthing the ruins', 0.56);
     this.landmarks = new Landmarks(this.app, this.assets, this.collision);
 
-    await stage('Scattering stone and spires', 0.74);
-    this.props = new Props(this.app, this.assets, this.profile, this.collision);
-    this.scatterStats = this.props.stats;
+    await stage('Rebuilding the city square', 0.64);
+    this.civic = new CivicSites(this.app, this.assets, this.lighting, this.collision);
 
-    await stage('Growing ground cover', 0.86);
-    this.vegetation = new Vegetation(this.app, this.profile);
+    await stage('Streaming the regions', 0.72);
+    this.chunks = new ChunkManager(this.app, this.assets, this.profile, this.collision);
 
     if (this.options.testRange) {
-      await stage('Preparing the controller range', 0.9);
+      await stage('Preparing the controller range', 0.8);
       this.testRange = new TestRange(this.app, this.collision);
       this.spawn = { ...this.testRange.spawn };
     } else {
       this.spawn = findSpawnPoint();
     }
 
-    await stage('Releasing the survey drone', 0.93);
+    await stage('Growing ground cover', 0.84);
+    await this.chunks.preload(this.spawn.x, this.spawn.z, nextFrame);
+
+    await stage('Setting the clock', 0.9);
+    this.dome = new SkyDome(this.app);
+    this.dayNight = new DayNight(
+      this.app,
+      this.sky,
+      this.dome,
+      this.lighting,
+      this.profile,
+      { water: this.water, chunks: this.chunks, landmarks: this.landmarks },
+      this.options.startHour ?? 7.4,
+      this.options.dayLengthMinutes ?? 12,
+    );
+
+    await stage('Releasing the survey drone', 0.95);
     this.atmosphere = new Atmosphere(this.app, this.assets, {
       x: this.spawn.x,
       y: this.spawn.y,
       z: this.spawn.z,
     });
 
-    await stage('Calibrating echo signatures', 0.97);
+    await stage('Calibrating echo signatures', 0.98);
     this.collectibles = new Collectibles(this.app, this.assets, this.collectedIds);
     this.landmarks.setGateEnergy(this.collectibles.collectedCount / Math.max(1, this.collectibles.total));
     await stage('Valley ready', 1);
@@ -160,8 +187,10 @@ export class World {
 
   update(dt: number, time: number, context: WorldUpdateContext): EchoShard | null {
     this.water.update(dt);
-    this.vegetation.update(time);
+    this.river.update(dt);
+    this.chunks.update(context.player.x, context.player.z);
     this.landmarks.update(dt, time);
+    this.dayNight.update(dt, context.player, context.player);
     this.lighting.update(context.player.x, context.player.z, context.player.y);
     this.lighting.tick(time);
     this.atmosphere.update(dt, time, context.player, context.yaw);
@@ -177,14 +206,17 @@ export class World {
     this.landmarks.setGateEnergy(value);
   }
 
+  setHour(hour: number): void {
+    this.dayNight?.setHour(hour);
+  }
+
+  setDayLength(minutes: number): void {
+    this.dayNight?.setDayLength(minutes);
+  }
+
   getAreaName(x: number, z: number): string {
     if (this.testRange) return 'Controller Test Range';
-    if (distance2D(x, z, WORLD.gateCenter.x, WORLD.gateCenter.z) < 70) return 'The Echo Gate';
-    if (distance2D(x, z, WORLD.plazaCenter.x, WORLD.plazaCenter.z) < 58) return 'The Sunken Plaza';
-    if (distance2D(x, z, 182, -96) < 88) return 'Whispering Grove';
-    if (distance2D(x, z, -152, 84) < 78) return 'Windward Ridge';
-    if (distance2D(x, z, WORLD.lakeCenter.x, WORLD.lakeCenter.z) < WORLD.lakeRadius + 22) return 'Mirrorwater Shore';
-    return 'Mirrorwater Valley';
+    return areaNameAt(x, z);
   }
 
   dispose(): void {
@@ -192,9 +224,11 @@ export class World {
     this.collision.clear();
     this.collectibles?.destroy();
     this.atmosphere?.destroy();
-    this.vegetation?.destroy();
-    this.props?.destroy();
+    this.civic?.dispose();
+    this.chunks?.dispose();
+    this.river?.dispose();
     this.landmarks?.destroy();
+    this.dayNight?.dispose();
     this.lighting?.root.destroy();
     this.water?.destroy();
     this.terrain?.destroy();

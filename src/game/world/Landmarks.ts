@@ -15,7 +15,7 @@ import { createRandom, lerp, randomRange } from '../util/math';
 import { createTexture, generateBeamTexture } from '../util/textures';
 import { heightAt } from './heightfield';
 import type { CollisionWorld } from './collision';
-import { PROP_SOLIDS } from './Props';
+import { PROP_SOLIDS } from './solids';
 
 /** Original ruins, monolith circles and the Echo Gate. */
 export class Landmarks {
@@ -30,6 +30,7 @@ export class Landmarks {
   private readonly runeMaterials: StandardMaterial[] = [];
   private readonly crystals: Entity[] = [];
   private gateRuneMaterial: StandardMaterial | null = null;
+  private night = 0;
 
   constructor(app: AppBase, assets: AssetManager, collision?: CollisionWorld) {
     this.app = app;
@@ -304,9 +305,7 @@ export class Landmarks {
         roll: randomRange(rng, -0.06, 0.06),
       });
     }
-    const rune = this.makeEmissiveMaterial(new Color(0.4, 1, 0.8), 1.1);
-    this.addPrimitive('cylinder', 'grove-stone', [x, heightAt(x, z) + 0.4, z], [2.4, 0.8, 2.4], this.makeStoneMaterial(new Color(0.3, 0.33, 0.29, 1)), undefined, true);
-    this.addPrimitive('torus', 'grove-rune', [x, heightAt(x, z) + 0.85, z], [2.6, 0.08, 2.6], rune);
+    // The shrine itself is built by CivicSites; here we only thicken the grove.
   }
 
   private buildRidge(): void {
@@ -332,15 +331,25 @@ export class Landmarks {
 
   /* ------------------------------------------------------------------ */
 
-  setGateEnergy(value: number): void {
-    this.gateEnergy.value = Math.max(0, Math.min(1, value));
-    const target = 1.2 + this.gateEnergy.value * 2.4;
+  /** Night lifts the practical glow of the gate and its rune bands. */
+  setNight(factor: number): void {
+    this.night = Math.max(0, Math.min(1, factor));
+    this.applyGateGlow();
+  }
+
+  private applyGateGlow(): void {
+    const target = (1.2 + this.gateEnergy.value * 2.4) * (0.85 + this.night * 0.5);
     for (const material of this.runeMaterials) {
       material.emissiveIntensity = target;
       material.update();
     }
-    this.beamMaterial.opacity = lerp(0.12, 0.55, this.gateEnergy.value);
+    this.beamMaterial.opacity = lerp(0.12, 0.55, this.gateEnergy.value) * (0.75 + this.night * 0.65);
     this.beamMaterial.update();
+  }
+
+  setGateEnergy(value: number): void {
+    this.gateEnergy.value = Math.max(0, Math.min(1, value));
+    this.applyGateGlow();
   }
 
   update(dt: number, time: number): void {

@@ -1,29 +1,42 @@
 import { Color, Entity, type AppBase } from 'playcanvas';
 import { WORLD, type QualityProfile } from '../config';
+import { clamp } from '../util/math';
 
 export interface LightingAnchors {
   gate: { x: number; y: number; z: number };
   plaza: { x: number; y: number; z: number };
 }
 
+interface Accent {
+  entity: Entity;
+  base: number;
+  phase: number;
+  rate: number;
+}
+
 /**
- * Golden-hour key light with cascaded shadows, a cool sky fill and practical
- * emissive accents at the ruins. The key light follows the player so shadow
- * texels stay concentrated where they matter.
+ * The key light (sun by day, moon by night), a cool sky fill and practical
+ * emissive accents at the ruins and settlement. The key light follows the
+ * player so shadow texels stay concentrated where they matter, and its colour,
+ * intensity and direction are driven by the day/night cycle.
  */
 export class Lighting {
   readonly root: Entity;
   readonly sun: Entity;
   readonly fill: Entity;
-  private readonly accents: Entity[] = [];
-  private readonly sunDirection: [number, number, number];
+  private readonly accents: Accent[] = [];
   private readonly profile: QualityProfile;
+  private direction: [number, number, number];
   private lastAnchorX = Number.NaN;
   private lastAnchorZ = Number.NaN;
+  private lastKeyX = Number.NaN;
+  private lastKeyZ = Number.NaN;
+  private night = 0;
+  private accentScale = 1;
 
   constructor(app: AppBase, sunDirection: [number, number, number], profile: QualityProfile, anchors: LightingAnchors) {
     this.root = new Entity('lighting');
-    this.sunDirection = sunDirection;
+    this.direction = [...sunDirection];
     this.profile = profile;
 
     this.sun = new Entity('sun');
@@ -50,19 +63,14 @@ export class Lighting {
     });
     this.root.addChild(this.fill);
 
-    this.addAccent(app, 'gate-glow', anchors.gate.x, anchors.gate.y + 6, anchors.gate.z, new Color(0.32, 0.95, 0.82), 4.2, 46);
-    this.addAccent(app, 'plaza-glow', anchors.plaza.x, anchors.plaza.y + 3, anchors.plaza.z, new Color(0.38, 0.9, 0.8), 2.2, 26);
+    this.addAccent('gate-glow', anchors.gate.x, anchors.gate.y + 6, anchors.gate.z, new Color(0.32, 0.95, 0.82), 4.2, 46, 0.7);
+    this.addAccent('plaza-glow', anchors.plaza.x, anchors.plaza.y + 3, anchors.plaza.z, new Color(0.38, 0.9, 0.8), 2.2, 26, 1.1);
 
     app.root.addChild(this.root);
-    this.sun.setPosition(sunDirection[0] * 380, sunDirection[1] * 380, sunDirection[2] * 380);
-    this.sun.lookAt(0, 0, 0);
-    // Cool fill arrives from the antisolar direction, low over the ridge.
-    this.fill.setPosition(-sunDirection[0] * 300, 140, -sunDirection[2] * 300);
-    this.fill.lookAt(0, 0, 0);
+    this.placeKey(this.direction);
   }
 
-  private addAccent(
-    app: AppBase,
+  addAccent(
     name: string,
     x: number,
     y: number,
@@ -70,6 +78,7 @@ export class Lighting {
     color: Color,
     intensity: number,
     range: number,
+    rate = 1,
   ): void {
     const accent = new Entity(name);
     accent.addComponent('light', {
@@ -81,8 +90,7 @@ export class Lighting {
     });
     accent.setPosition(x, y, z);
     this.root.addChild(accent);
-    this.accents.push(accent);
-    void app;
+    this.accents.push({ entity: accent, base: intensity, phase: this.accents.length * 2.3, rate });
   }
 
   applyQuality(profile: QualityProfile): void {
@@ -91,34 +99,59 @@ export class Lighting {
     this.sun.light!.shadowDistance = profile.shadowDistance;
   }
 
+  /** Applied once per frame by the day/night driver. */
+  setEnvironment(keyDirection: [number, number, number], sunColor: Color, sunIntensity: number, fillColor: Color, fillIntensity: number, night: number): void {
+    this.direction = [keyDirection[0], keyDirection[1], keyDirection[2]];
+    this.night = clamp(night, 0, 1);
+    this.sun.light!.color = sunColor;
+    this.sun.light!.intensity = sunIntensity;
+    this.fill.light!.color = fillColor;
+    this.fill.light!.intensity = fillIntensity;
+    this.accentScale = 0.35 + this.night * 1.15;
+  }
+
   /** Keep shadow cascades centred on the expedition. */
   update(targetX: number, targetZ: number, groundY: number): void {
-    if (Math.abs(targetX - this.lastAnchorX) < 1.5 && Math.abs(targetZ - this.lastAnchorZ) < 1.5) return;
-    this.lastAnchorX = targetX;
-    this.lastAnchorZ = targetZ;
-    const height = Math.max(30, groundY + 12);
-    this.sun.setPosition(
-      targetX + this.sunDirection[0] * 380,
-      height + this.sunDirection[1] * 380,
-      targetZ + this.sunDirection[2] * 380,
+    const moved = Math.abs(targetX - this.lastAnchorX) >= 1.5 || Math.abs(targetZ - this.lastAnchorZ) >= 1.5;
+    const turned =
+      Math.abs(this.direction[0] - this.lastKeyX) >= 0.002 ||
+      Math.abs(this.direction[2] - this.lastKeyZ) >= 0.002;
+    if (!moved && !turned) return;
+    this.placeKey(this.direction, targetX, targetZ, groundY);
+    this.fill.setPosition(
+      targetX - this.direction[0] * 300,
+      groundY + 150,
+      targetZ - this.direction[2] * 300,
     );
-    this.sun.lookAt(targetX, groundY, targetZ);
-
-    this.fill.setPosition(targetX - this.sunDirection[0] * 300, groundY + 150, targetZ - this.sunDirection[2] * 300);
     this.fill.lookAt(targetX, groundY, targetZ);
   }
 
-  /** Slow ember-like flicker on the ruin lamps. */
+  private placeKey(direction: [number, number, number], targetX = 0, targetZ = 0, groundY = 0): void {
+    this.lastAnchorX = targetX;
+    this.lastAnchorZ = targetZ;
+    this.lastKeyX = direction[0];
+    this.lastKeyZ = direction[2];
+    const height = Math.max(30, groundY + 12);
+    this.sun.setPosition(
+      targetX + direction[0] * 380,
+      height + direction[1] * 380,
+      targetZ + direction[2] * 380,
+    );
+    this.sun.lookAt(targetX, groundY, targetZ);
+  }
+
+  /** Slow ember-like flicker on the practical lights; brighter at night. */
   tick(time: number): void {
-    for (let i = 0; i < this.accents.length; i++) {
-      const light = this.accents[i].light!;
-      const base = i === 0 ? 4.2 : 2.2;
-      light.intensity = base * (0.9 + Math.sin(time * (i === 0 ? 0.7 : 1.1) + i * 2.3) * 0.1);
+    for (const accent of this.accents) {
+      const light = accent.entity.light;
+      if (!light) continue;
+      const flicker = 0.9 + Math.sin(time * accent.rate + accent.phase) * 0.1;
+      light.intensity = accent.base * this.accentScale * flicker;
     }
   }
 
   get sunDir(): [number, number, number] {
-    return this.sunDirection;
+    return [this.direction[0], this.direction[1], this.direction[2]];
   }
 }
 

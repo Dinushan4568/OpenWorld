@@ -402,6 +402,7 @@ export class Game {
     this.ui.hud.setCoords(
       `X ${position.x.toFixed(0)} · Z ${position.z.toFixed(0)} · ALT ${Math.round(position.y)} m`,
     );
+    this.ui.hud.setClock(this.world.clockLabel);
     const heading = (180 - (this.camera!.yaw * 180) / Math.PI + 360) % 360;
     const markers: CompassMarker[] = [];
     const remaining = this.world.collectibles.remaining
@@ -455,7 +456,7 @@ export class Game {
     this.audio.gateEnergised();
     this.ui.hud.banner('The Gate Answers', 'All five echoes recovered — Phase 01 complete', 6500);
     this.ui.toast('Expedition complete · the Echo Gate is awake', 'accent', 7000);
-    this.ui.hud.setObjective('The Gate is awake. Phase 02 will take you beyond it.');
+    this.ui.hud.setObjective('The Gate is awake. The valley beyond is open.');
   }
 
   /* ------------------------------------------------------------------ */

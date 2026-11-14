@@ -17,6 +17,7 @@ const CARDINALS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 export class Hud extends Screen {
   private readonly locationEl: HTMLElement;
   private readonly coordsEl: HTMLElement;
+  private readonly clockEl: HTMLElement;
   private readonly objectiveEl: HTMLElement;
   private readonly pipsEl: HTMLElement;
   private readonly compassTrack: HTMLElement;
@@ -47,6 +48,7 @@ export class Hud extends Screen {
     super('hud');
     this.locationEl = el('div', { class: 'hud__location', text: 'Mirrorwater Valley' });
     this.coordsEl = el('div', { class: 'hud__coords', text: 'S 18 · E 08 · ALT 0 M' });
+    this.clockEl = el('div', { class: 'hud__clock', text: '07:24 · Morning' });
     this.objectiveEl = el('p', {
       text: 'Recover the five Echo Shards. Follow the compass signals into the valley.',
     });
@@ -90,7 +92,7 @@ export class Hud extends Screen {
     this.waterEl = el('div', { class: 'hud__water', attrs: { 'aria-hidden': 'true' } });
     this.crosshair = el('div', { class: 'hud__crosshair', attrs: { 'aria-hidden': 'true' } });
 
-    const tl = el('div', { class: 'hud__tl' }, [this.locationEl, this.coordsEl, objectiveCard]);
+    const tl = el('div', { class: 'hud__tl' }, [this.locationEl, this.coordsEl, this.clockEl, objectiveCard]);
     const tr = el('div', { class: 'hud__tr' }, [this.shardEl, this.statsEl]);
 
     this.root.append(
@@ -141,6 +143,12 @@ export class Hud extends Screen {
 
   setCoords(text: string): void {
     this.coordsEl.textContent = text;
+  }
+
+  /** In-world clock and phase of day, e.g. "18:42 · Sunset". */
+  setClock(text: string): void {
+    if (this.clockEl.textContent === text) return;
+    this.clockEl.textContent = text;
   }
 
   setObjective(text: string): void {

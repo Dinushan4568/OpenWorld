@@ -163,7 +163,7 @@ export const CAMERA = {
 
 export const SHARD_LOCATIONS: ReadonlyArray<{ id: string; name: string; x: number; z: number; hint: string }> = [
   { id: 'shard_plaza', name: 'Echo Shard I', x: 46, z: -22, hint: 'The Sunken Plaza' },
-  { id: 'shard_lake', name: 'Echo Shard II', x: -104, z: -108, hint: 'Mirrorwater Shore' },
+  { id: 'shard_lake', name: 'Echo Shard II', x: -111, z: -82, hint: 'Mirrorwater Shore' },
   { id: 'shard_ridge', name: 'Echo Shard III', x: -152, z: 84, hint: 'The Windward Ridge' },
   { id: 'shard_gate', name: 'Echo Shard IV', x: 146, z: 58, hint: 'Foot of the Echo Gate' },
   { id: 'shard_grove', name: 'Echo Shard V', x: 182, z: -96, hint: 'The Whispering Grove' },
@@ -180,6 +180,15 @@ export const MODEL_FILES = {
   echo_shard: 'echo_shard.glb',
   drone_body: 'drone_body.glb',
   drone_ring: 'drone_ring.glb',
+  city_block: 'city_block.glb',
+  city_tower: 'city_tower.glb',
+  city_arch: 'city_arch.glb',
+  facility_pylon: 'facility_pylon.glb',
+  facility_dish: 'facility_dish.glb',
+  facility_block: 'facility_block.glb',
+  crystal_cluster: 'crystal_cluster.glb',
+  fern: 'fern.glb',
+  reeds: 'reeds.glb',
   wayfarer: 'wayfarer.glb',
 } as const;
 

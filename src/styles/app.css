@@ -1320,6 +1320,27 @@ input[type='range'].slider:focus-visible {
   color: rgba(242, 236, 223, 0.62);
 }
 
+.hud__clock {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--amber);
+  opacity: 0.82;
+}
+
+.hud__clock::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 8px currentColor;
+}
+
 .hud__objective {
   margin-top: 8px;
   padding: 12px 14px;

@@ -24,6 +24,7 @@ export class Water {
   private time = 0;
   private updateAccumulator = 0;
   private readonly baseGloss = 0.94;
+  private readonly baseDiffuse: [number, number, number] = [0.055, 0.14, 0.16];
 
   constructor(app: AppBase, normalMap: Texture, detailMap: Texture) {
     const device = app.graphicsDevice;
@@ -60,6 +61,20 @@ export class Water {
     this.root.render!.castShadows = false;
     this.root.render!.receiveShadows = false;
     app.root.addChild(this.root);
+  }
+
+  /**
+   * Tint the lake for the current time of day. The surface still reflects the
+   * scene environment; only the base colour and roughness shift.
+   */
+  setEnvironment(haze: readonly [number, number, number], night: number): void {
+    const n = Math.max(0, Math.min(1, night));
+    const r = this.baseDiffuse[0] * (1 - n * 0.55) + haze[0] * 0.16 * (1 - n);
+    const g = this.baseDiffuse[1] * (1 - n * 0.55) + haze[1] * 0.2 * (1 - n);
+    const b = this.baseDiffuse[2] * (1 - n * 0.5) + haze[2] * 0.24 * (1 - n);
+    this.material.diffuse = new Color(r, g, b, 1);
+    this.material.gloss = this.baseGloss - n * 0.16;
+    this.material.update();
   }
 
   update(dt: number): void {

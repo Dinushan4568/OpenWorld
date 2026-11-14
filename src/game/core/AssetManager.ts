@@ -198,6 +198,43 @@ export class AssetManager {
         entity.addComponent('render', { type: 'torus', material });
         entity.setLocalScale(1, 1, 1);
         break;
+      case 'city_block':
+      case 'facility_block':
+        entity.addComponent('render', { type: 'box', material });
+        entity.setLocalScale(9, 6, 8);
+        entity.setLocalPosition(0, 3, 0);
+        break;
+      case 'city_tower':
+        entity.addComponent('render', { type: 'box', material });
+        entity.setLocalScale(8, 30, 8);
+        entity.setLocalPosition(0, 15, 0);
+        break;
+      case 'city_arch':
+        entity.addComponent('render', { type: 'box', material });
+        entity.setLocalScale(18, 1.2, 5.4);
+        entity.setLocalPosition(0, 7.9, 0);
+        break;
+      case 'facility_pylon':
+        entity.addComponent('render', { type: 'cylinder', material });
+        entity.setLocalScale(1.2, 10, 1.2);
+        entity.setLocalPosition(0, 5, 0);
+        break;
+      case 'facility_dish':
+        entity.addComponent('render', { type: 'sphere', material });
+        entity.setLocalScale(5.4, 1.2, 5.4);
+        entity.setLocalPosition(0, 5.5, 0);
+        break;
+      case 'crystal_cluster':
+        entity.addComponent('render', { type: 'cone', material });
+        entity.setLocalScale(1.8, 3.4, 1.8);
+        entity.setLocalPosition(0, 1.7, 0);
+        break;
+      case 'fern':
+      case 'reeds':
+        entity.addComponent('render', { type: 'cone', material });
+        entity.setLocalScale(1.1, 1.2, 1.1);
+        entity.setLocalPosition(0, 0.6, 0);
+        break;
       default:
         entity.addComponent('render', { type: 'box', material });
         break;
@@ -209,7 +246,12 @@ export class AssetManager {
     const cached = this.materials.get(name);
     if (cached) return cached;
     const material = new StandardMaterial();
-    const glow = name === 'echo_shard' || name === 'gate_rune' || name === 'drone_ring';
+    const glow =
+      name === 'echo_shard' ||
+      name === 'gate_rune' ||
+      name === 'drone_ring' ||
+      name === 'crystal_cluster' ||
+      name === 'facility_pylon';
     material.name = `fallback-${name}`;
     material.useMetalness = true;
     material.metalness = glow ? 0.2 : 0.02;
