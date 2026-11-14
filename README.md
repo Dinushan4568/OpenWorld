@@ -2,9 +2,12 @@
 
 An original, cinematic open-world exploration game that runs in the browser. Phase 01 delivered the
 vertical slice — a procedurally sculpted valley, the Echo Gate, five recoverable Echo Shards, the
-full menu/settings/credits flow, synthesised audio and the asset pipeline. Phase 02 rebuilds the
+full menu/settings/credits flow, synthesised audio and the asset pipeline. Phase 02 rebuilt the
 expedition's movement around a proper over-the-shoulder third-person controller, an authored humanoid
-character and a collision world that props, steps and camera booms all share.
+character and a collision world that props, steps and camera booms all share. Phase 03 turns the
+valley into a living region: an always-descending Crystal River with two waterfalls, streamed
+scatter across five distinct regions, a full day/night cycle, and the ruins, streets and research
+station that fill them.
 
 Everything is original work. The project is inspired by the *feeling* of exploring a vast, overgrown
 world — it does not use, copy or reproduce any copyrighted characters, assets, environments, stories
@@ -27,7 +30,7 @@ The dev server binds `0.0.0.0` so it also works behind the sandbox preview proxy
 ```bash
 npm run build        # typecheck + production bundle into dist/
 npm run preview      # serve the production bundle
-npm test             # 74 unit/DOM tests (Vitest)
+npm test             # 95 unit/DOM tests (Vitest)
 npm run typecheck    # tsc --noEmit
 npm run assets       # regenerate the GLB prop library + the Wayfarer character
 ```
@@ -52,6 +55,49 @@ WebGPU first and falls back to WebGL 2 automatically.
 
 Settings (display, camera, audio, accessibility) are reachable from the main menu and the pause
 screen, apply immediately and persist to `localStorage`.
+
+---
+
+## What Phase 03 adds — the living world
+
+**Five regions, one heightfield**
+- `regions.ts` defines the **Mountain Valley** basin, the **Ancient Forest** (Whispering Grove), the
+  **Abandoned City** (Glasshouse Terraces), the **Crystal River** corridor and the **Ancient Research
+  Facility** (Station Theta). Region masks blend into the analytic heightfield, tint the terrain,
+  name the HUD location and drive which props stream in.
+- The old single terrain mesh is now a 3×3 grid of independently culled 300 m tiles at the same
+  effective detail, stitched with world-space UVs, plus the far mountain ring.
+
+**The Crystal River**
+- A derived, strictly descending water profile (106 stations, ~404 m) carved from the landform, with
+  a 1.35 m channel, wet banks, a blended 22 m corridor and a mouth that meets Mirrorwater exactly at
+  the water line. Two designed falls (8.4 m at z≈180, 6.2 m at z≈127) break the gradient; the rest of
+  the profile is relaxed between them so there are no accidental stair-step rapids.
+- A scrolling ribbon mesh, vertical fall sheets, additive foam crests and pools, and drifting spray
+  sprites. A stone bridge with piers, rails and lanterns crosses the gorge on the city road.
+
+**Streaming**
+- `streaming.ts` is pure, testable chunk logic: 64 m chunks, near/mid LOD rings, nearest-first load
+  budgets, upgrades and distance unloads inside a world boundary.
+- `ChunkManager` builds each chunk into merged ground cover (two-triangle grass blades and
+  wildflowers, one draw call each) plus instanced props, colliders grouped per chunk and disposed with
+  it. City blocks/towers/arches, facility pylons/dishes/blocks, crystals, ferns and reeds are placed
+  by region-specific rules; hero sites are excluded so nothing intrudes on authored architecture.
+
+**Day/night**
+- `dayNightPalette.ts` interpolates ten sky keyframes — zenith, horizon, fog, sun/fill colour and
+  intensity, ambient, exposure, stars and a night factor — with a seamless midnight wrap. The sun
+  follows a real sinusoid (sunrise 06:00, sunset 18:00) and the moon is its antipode.
+- `SkyDome` draws 26 unlit altitude bands, a 420-star additive field, and sun/moon orbs with glows.
+  `Lighting` retargets the shadowed key light, sky fill and practical point lights (gate, plaza,
+  reactor, bridge, grove, street lamps) every frame; `DayNight` drives fog, exposure, ambient,
+  water tint, chunk emissives and landmark glow. The HUD shows a live 24-hour clock and phase.
+
+**Hero architecture (`CivicSites.ts`)**
+- A raised city square with a civic tower, apartment slabs, a gateway arch, planters and lamps; a
+  reactor deck with a scaled Echo Gate ring, containment band, pylon ring, dishes, lab modules and
+  conduits; the Mother Tree clearing with its stone ring and grove lights; and the river bridge with
+  walkable deck, piers, rails and lanterns. Each site registers its own collision metadata.
 
 ---
 
@@ -109,14 +155,14 @@ screen, apply immediately and persist to `localStorage`.
 - 900 m analytic heightfield built from layered value/ridged noise, with a lake basin, plaza
   terrace, gate saddle, windward ridge, grove bowl and a natural amphitheatre rim that acts as the
   expedition boundary instead of an invisible wall.
-- 288² vertex terrain mesh with baked biome vertex colours (sand, grass, rock, highland) plus a far
-  ring of 96² backdrop mountains.
+- Region-aware terrain: 3×3 frustum-culled tiles with baked biome and region vertex colours plus a
+  far ring of backdrop mountains.
+- Crystal River with two waterfalls, foam, spray and a stone bridge; a day/night cycle driving sky,
+  sun/moon, fog, exposure, water and practical lights; streamed chunk content in five regions.
 - Runtime-generated detail textures (grass, stone, water normals, motes, glow, sky panorama),
   prefiltered skybox + environment atlas for image-based lighting.
-- Directional sun with cascaded shadows, hemisphere-style fill light and flickering ruin lamps.
+- Directional sun with cascaded shadows, sky fill and flickering practical lights.
 - Water surface with layered normal scrolling, fresnel and shoreline tinting.
-- Chunked scatter of rocks, monolith spires, trees, pillar ruins and walls with slope/biome/trail
-  filtering and per-preset density.
 - Landmarks: the Echo Gate, the Sunken Plaza colonnade, shrine pedestals, ruin walls.
 - Atmosphere: an orbiting survey drone companion with counter-rotating rings, drifting motes, lake
   mist and an expanding Echo Pulse torus.
@@ -179,17 +225,20 @@ src/
       ThirdPersonCamera.ts spring camera, boom collision, cinematic orbit
     world/
       heightfield.ts      the single analytic source of truth for terrain
-      collision.ts        uniform-grid cylinder world + support/blocked queries
-      navigation.ts       heightfield/collision adapters for the solver
-      Terrain.ts Sky.ts Lighting.ts Water.ts Vegetation.ts Landmarks.ts Props.ts
-      Atmosphere.ts Collectibles.ts World.ts TestRange.ts
+      collision.ts        uniform-grid solid world + support/blocked queries
+      collision helpers    solids.ts (prop metadata), streaming.ts (pure chunk plans)
+      regions.ts          five region definitions, labels and points of interest
+      riverPath.ts        river centreline, always-descending profile, waterfall detection
+      dayNightPalette.ts  keyframed sky palette, sun/moon positions, phase names
+      SkyDome.ts Lighting.ts DayNight.ts River.ts CivicSites.ts ChunkManager.ts
+      Terrain.ts Sky.ts Water.ts Landmarks.ts Atmosphere.ts Collectibles.ts World.ts TestRange.ts
     util/                 math, noise, textures, mesh building
   ui/
     UiRoot.ts             owns every DOM surface and transitions
     screens/              loading, menu, HUD, pause, settings, credits, fatal, touch
     components/           reusable DOM controls (buttons, sliders, switches, segmented)
   styles/app.css          the entire design system
-tools/build-assets.mjs    deterministic GLB writer for the ten prop models
+tools/build-assets.mjs    deterministic GLB writer for the nineteen prop models
 tools/build-character.mjs deterministic GLB writer for the Wayfarer humanoid
 tests/                    Vitest suites (math, heightfield, stores, assets, UI, boot failure,
                           collision, gait, locomotion, character asset, camera)
@@ -206,10 +255,11 @@ Design rules followed throughout:
 
 ## Assets
 
-`tools/build-assets.mjs` writes ten small, valid binary glTF 2.0 containers into
+`tools/build-assets.mjs` writes nineteen small, valid binary glTF 2.0 containers into
 `public/assets/models` (rocks, monolith, pillar, gate, rune, spire tree, ruin wall, shard, drone body,
-drone ring) plus `manifest.json`. They are intentionally tiny (≈136 KiB total) and shared with
-primitive fallbacks, so the repository carries no opaque binary art.
+drone ring, city block/tower/arch, facility pylon/dish/block, crystal cluster, fern and reeds) plus
+`manifest.json`. They are intentionally tiny and shared with primitive fallbacks, so the repository
+carries no opaque binary art.
 
 `tools/build-character.mjs` writes `wayfarer.glb` (595 KiB, 17,738 triangles, 23 named joints, seven
 materials) with the same deterministic mesh-building primitives used for the props. Both scripts run
@@ -222,7 +272,7 @@ character's motion is synthesised in TypeScript rather than baked into animation
 
 ## Testing
 
-`npm test` runs 74 tests across eleven suites:
+`npm test` runs 95 tests across fifteen suites:
 
 - `math` / `heightfield` / `settings` / `assets` / `ui` / `boot` — the Phase 01 coverage: damping and
   angle maths, deterministic terrain, settings/progress sanitisation, glTF validity and manifests,
@@ -239,6 +289,15 @@ character's motion is synthesised in TypeScript rather than baked into animation
   and a real-time triangle budget.
 - `camera` — mouse-right turns the view right, sensitivity scaling, invert-Y, pitch/zoom clamps,
   boom shortening against a solid prop and the shoulder offset in `snapToTarget`.
+- `river` — monotone descent, the mouth meeting the water line, a navigable channel depth along the
+  centreline, exactly two falls with no stair-stepped tail, and arc-length sampling continuity.
+- `streaming` — coordinate/key round-trips, nearest-first desired chunks inside the world boundary,
+  per-pass load budgets, LOD upgrades and distance unloads.
+- `dayNight` — ordered keyframes, a seamless midnight wrap, continuity across the full cycle, the
+  sun above the horizon between sunrise and sunset, a low-key starry night and phase names.
+- `world-regions` — every point of interest classifies to its own region, names are unique, the city
+  and facility pads are flat, the spawn pad is walkable, every echo shard is dry and walkable, and
+  region tints differ.
 - `character` runtime — binds the rig hierarchy, drives all 23 joints, damps instead of snapping,
   tucks the legs in the air and settles back to idle.
 
@@ -271,21 +330,26 @@ Run the dev server, open the game, then visit `/?range=1`:
 
 ---
 
-## Known limits (Phase 02)
+## Known limits (Phase 03)
 
 - The character is an authored, low-poly, jointed figure (17.7k triangles) — a stylised expedition
   suit rather than a scanned actor. It is not skinned and has no baked clips: motion is procedural,
   with no IK, foot planting, ragdoll or facial animation yet.
-- One valley biome set and one objective loop; no combat, dialogue, inventory, NPCs or vehicles.
+- Terrain detail is fixed per 300 m tile (no distance LOD within the basin); chunk streaming changes
+  prop density, not terrain tessellation.
+- The river is a carved corridor, not a fluid simulation: flow is scrolling normal maps and the two
+  falls are authored meshes, so there is no buoyancy, current push or swimming.
+- One objective loop; no combat, dialogue, inventory, NPCs or vehicles.
 - Collision uses vertical cylinders, so overhangs, thin diagonal walls and sloped prop surfaces are
   approximated. Walkable tops are circles; small props are intentionally left non-solid.
 - Position is saved at most every eight seconds and on pause/quit, so a hard tab kill can lose a few
   metres of travel (shards are saved immediately).
 - No multiplayer, no cloud saves, no gamepad support; touch controls cover movement, look, run,
   jump, pulse and pause.
-- Phase 03 has not been started; the controller test range (`?range=1`) and its debug HUD are
-  temporary scaffolding and will be removed when they are no longer useful.
+- Streamed chunks are built on the main thread as the player crosses a boundary, so the first pass
+  into a new region can hitch for a frame while props and colliders are created.
+- The controller test range (`?range=1`) and its debug HUD remain temporary scaffolding.
 
 ---
 
-*Echoes of the Lost World — Phase 02 · v0.2.0*
+*Echoes of the Lost World — Phase 03 · v0.3.0*

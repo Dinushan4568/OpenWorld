@@ -1,9 +1,9 @@
 {
   "name": "echoes-of-the-lost-world",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
-  "description": "Echoes of the Lost World — original sci-fi open-world adventure (Phase 02)",
+  "description": "Echoes of the Lost World — original sci-fi open-world adventure (Phase 03)",
   "scripts": {
     "assets": "node tools/build-assets.mjs && node tools/build-character.mjs",
     "dev": "vite --host 0.0.0.0 --port 5173",

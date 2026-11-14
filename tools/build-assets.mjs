@@ -529,6 +529,180 @@ function define(name, builder, material) {
   define('drone_ring', b, { baseColor: [0.04, 0.2, 0.18, 1], emissive: [0.35, 1, 0.9], roughness: 0.3, metallic: 0.2 });
 }
 
+/* 11 — abandoned city apartment block */
+{
+  const b = makeBuilder();
+  const concrete = [0.3, 0.3, 0.29];
+  addBox(b, { cy: 6, sx: 9, sy: 12, sz: 8, color: concrete, seed: 51, jitter: 0.12 });
+  addBox(b, { cy: 12.15, sx: 9.4, sy: 0.3, sz: 8.4, color: [0.26, 0.26, 0.25], seed: 52 });
+  addBox(b, { cy: 4, sx: 9.3, sy: 0.22, sz: 8.3, color: [0.34, 0.33, 0.32], seed: 53 });
+  addBox(b, { cy: 8, sx: 9.3, sy: 0.22, sz: 8.3, color: [0.34, 0.33, 0.32], seed: 54 });
+  for (const y of [2.2, 6.2, 10.2]) {
+    addBox(b, { cy: y, cz: 4.05, sx: 7.6, sy: 1.2, sz: 0.18, color: [0.055, 0.07, 0.075], seed: 55 + y });
+    addBox(b, { cy: y, cz: -4.05, sx: 7.6, sy: 1.2, sz: 0.18, color: [0.055, 0.07, 0.075], seed: 58 + y });
+  }
+  addBox(b, { cx: 5.6, cy: 3, sx: 4, sy: 6, sz: 5, color: [0.27, 0.27, 0.26], seed: 61 });
+  addBox(b, { cx: -2, cy: 12.6, sx: 3.4, sy: 0.9, sz: 3, color: [0.24, 0.24, 0.23], seed: 62 });
+  addBox(b, { cx: 2.4, cy: 12.4, sx: 2.2, sy: 0.55, sz: 2.4, color: [0.22, 0.22, 0.21], seed: 63 });
+  // Reclaimed vines hanging down the facade.
+  for (let i = 0; i < 5; i++) {
+    const x = -3.4 + i * 1.7;
+    addBox(b, { cx: x, cy: 9.6 - i * 0.5, cz: 4.12, sx: 0.16, sy: 3.4 + (i % 3), sz: 0.1, color: [0.12, 0.22, 0.12], seed: 70 + i });
+  }
+  define('city_block', b, { baseColor: [0.92, 0.9, 0.87, 1], roughness: 0.94, metallic: 0.03 });
+}
+
+/* 12 — city tower / civic spire */
+{
+  const b = makeBuilder();
+  addBox(b, { cy: 10, sx: 10, sy: 20, sz: 10, color: [0.26, 0.27, 0.27], seed: 81, jitter: 0.1 });
+  addBox(b, { cy: 25, sx: 7, sy: 10, sz: 7, color: [0.24, 0.25, 0.25], seed: 82 });
+  addBox(b, { cy: 33, sx: 4.4, sy: 6, sz: 4.4, color: [0.23, 0.24, 0.24], seed: 83 });
+  for (let i = 0; i < 6; i++) {
+    const y = 2 + i * 3.6;
+    const w = i < 3 ? 8.6 : i < 5 ? 5.8 : 3.4;
+    for (const z of [5.05, -5.05]) {
+      if (y > 20 && Math.abs(z) > 4) continue;
+      addBox(b, { cy: y, cz: z, sx: w, sy: 1.4, sz: 0.16, color: [0.05, 0.065, 0.07], seed: 90 + i });
+    }
+  }
+  addCylinder(b, { height: 7, radiusBottom: 0.28, radiusTop: 0.08, segments: 6, rings: 4, cy: 36, colorBottom: [0.35, 0.36, 0.36], colorTop: [0.5, 1.2, 1.1], noise: 0.02, seed: 99, cap: false });
+  addOctahedron(b, { cy: 43.4, radius: 0.5, color: [0.4, 1.5, 1.35] });
+  addBox(b, { cx: -4.2, cy: 20.6, sx: 2.4, sy: 1.2, sz: 3.2, color: [0.2, 0.2, 0.2], seed: 100 });
+  define('city_tower', b, { baseColor: [0.9, 0.9, 0.88, 1], roughness: 0.9, metallic: 0.06 });
+}
+
+/* 13 — collapsed overpass segment */
+{
+  const b = makeBuilder();
+  for (const x of [-7, 7]) {
+    addBox(b, { cx: x, cy: 3.4, sx: 2.4, sy: 6.8, sz: 3.4, color: [0.28, 0.28, 0.27], seed: 111 + x });
+    addBox(b, { cx: x, cy: 7.2, sx: 3.2, sy: 0.8, sz: 4.2, color: [0.3, 0.3, 0.29], seed: 113 + x });
+  }
+  addBox(b, { cy: 7.9, sx: 18, sy: 1.1, sz: 5.4, color: [0.32, 0.31, 0.3], seed: 115, jitter: 0.14 });
+  addBox(b, { cy: 8.75, sx: 18, sy: 0.75, sz: 0.26, color: [0.27, 0.27, 0.26], seed: 116 });
+  addBox(b, { cx: 8.2, cy: 8.1, sx: 3.4, sy: 0.9, sz: 5.0, color: [0.29, 0.29, 0.28], seed: 117 });
+  addBox(b, { cx: 10.6, cy: 4.4, sx: 2.2, sy: 7.4, sz: 3.2, color: [0.24, 0.24, 0.23], seed: 118 });
+  define('city_arch', b, { baseColor: [0.9, 0.88, 0.85, 1], roughness: 0.95, metallic: 0.02 });
+}
+
+/* 14 — research facility pylon */
+{
+  const b = makeBuilder();
+  addBox(b, { cy: 0.5, sx: 4.6, sy: 1, sz: 4.6, color: [0.19, 0.22, 0.23], seed: 121 });
+  addCylinder(b, {
+    height: 9.5, radiusBottom: 0.62, radiusTop: 0.2, segments: 6, rings: 8,
+    noise: 0.04, seed: 122, colorBottom: [0.24, 0.3, 0.31], colorTop: [0.4, 0.62, 0.6],
+  });
+  for (let i = 0; i < 3; i++) {
+    addTorusArc(b, {
+      majorRadius: 1.5 - i * 0.34, minorRadius: 0.09, arc: Math.PI * 2, tubularSegments: 36, radialSegments: 2,
+      center: [0, 4.2 + i * 1.9, 0], rotateAxis: 'flat', color: [0.5, 1.5, 1.3],
+    });
+  }
+  addBox(b, { cy: 9.8, sx: 1.4, sy: 0.5, sz: 1.4, color: [0.3, 0.9, 0.82], seed: 123 });
+  addOctahedron(b, { cy: 11.1, radius: 0.5, color: [0.5, 1.7, 1.45] });
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2 + 0.4;
+    addBox(b, { cx: Math.cos(a) * 1.5, cy: 2.1, cz: Math.sin(a) * 1.5, sx: 0.22, sy: 2.6, sz: 0.22, color: [0.2, 0.26, 0.27], seed: 124 + i });
+  }
+  define('facility_pylon', b, { baseColor: [0.82, 0.9, 0.9, 1], emissive: [0.08, 0.55, 0.48], roughness: 0.45, metallic: 0.55 });
+}
+
+/* 15 — survey dish array */
+{
+  const b = makeBuilder();
+  addBox(b, { cy: 0.6, sx: 5, sy: 1.2, sz: 5, color: [0.18, 0.21, 0.22], seed: 131 });
+  addCylinder(b, { height: 4.4, radiusBottom: 0.55, radiusTop: 0.34, segments: 8, rings: 5, noise: 0.03, seed: 132, colorBottom: [0.2, 0.26, 0.27], colorTop: [0.3, 0.4, 0.4] });
+  addBoulder(b, { cy: 5.5, radius: 2.7, squash: 0.22, detail: 2, seed: 133, noise: 0.04, tint: [0.34, 0.42, 0.42], colorJitter: 0.03 });
+  addTorusArc(b, { majorRadius: 2.75, minorRadius: 0.07, arc: Math.PI * 2, tubularSegments: 48, radialSegments: 2, center: [0, 5.5, 0], rotateAxis: 'flat', color: [0.4, 1.2, 1.1] });
+  addBox(b, { cx: 0.4, cy: 6.4, sx: 0.18, sy: 2.4, sz: 0.18, color: [0.45, 0.95, 0.9], seed: 134 });
+  addBox(b, { cy: 4.4, sx: 1.1, sy: 0.3, sz: 1.1, color: [0.24, 0.3, 0.3], seed: 135 });
+  define('facility_dish', b, { baseColor: [0.78, 0.86, 0.87, 1], emissive: [0.04, 0.3, 0.28], roughness: 0.4, metallic: 0.65 });
+}
+
+/* 16 — laboratory module */
+{
+  const b = makeBuilder();
+  addBox(b, { cy: 2.5, sx: 13, sy: 5, sz: 9, color: [0.24, 0.28, 0.29], seed: 141, jitter: 0.09 });
+  addBox(b, { cy: 5.25, sx: 13.6, sy: 0.5, sz: 9.6, color: [0.2, 0.23, 0.24], seed: 142 });
+  addBox(b, { cx: -3, cy: 2.2, cz: 4.55, sx: 3.2, sy: 3.4, sz: 0.2, color: [0.06, 0.1, 0.1], seed: 143 });
+  addBox(b, { cy: 3.1, cz: 4.6, sx: 9, sy: 0.18, sz: 0.12, color: [0.35, 1.2, 1.05], seed: 144 });
+  addCylinder(b, { height: 1.6, radiusBottom: 0.8, radiusTop: 0.7, segments: 8, rings: 3, center: [3, 5.5, -1.5], colorBottom: [0.3, 0.36, 0.36], colorTop: [0.4, 0.5, 0.5], seed: 145 });
+  addBox(b, { cx: 5, cy: 6.2, sx: 1.2, sy: 1.4, sz: 1.2, color: [0.22, 0.26, 0.27], seed: 146 });
+  addBox(b, { cx: -5.4, cy: 1.1, cz: -4.4, sx: 3, sy: 2.2, sz: 2.2, color: [0.19, 0.22, 0.23], seed: 147 });
+  define('facility_block', b, { baseColor: [0.86, 0.92, 0.92, 1], emissive: [0.03, 0.22, 0.2], roughness: 0.55, metallic: 0.4 });
+}
+
+/* 17 — crystal outcrop */
+{
+  const b = makeBuilder();
+  addBoulder(b, { cy: 0.1, radius: 1.5, squash: 0.5, detail: 1, seed: 151, noise: 0.25, tint: [0.3, 0.35, 0.36] });
+  const shards = [
+    [0.4, 0.2, 0.1, 2.6, 0.42],
+    [-0.7, -0.1, 0.4, 1.9, 0.32],
+    [0.1, -0.4, -0.8, 1.4, 0.26],
+    [0.9, 0.3, -0.5, 1.1, 0.2],
+  ];
+  for (let i = 0; i < shards.length; i++) {
+    const [x, y, z, r, s] = shards[i];
+    addOctahedron(b, { cx: x, cy: y + r * 0.9, cz: z, radius: r, color: [0.35 + i * 0.04, 0.95, 0.92] });
+    addBox(b, { cx: x, cy: y + 0.15, cz: z, sx: s * 2, sy: 0.3, sz: s * 2, color: [0.2, 0.42, 0.4], seed: 152 + i });
+  }
+  define('crystal_cluster', b, { baseColor: [0.35, 0.9, 0.85, 1], emissive: [0.2, 0.85, 0.8], roughness: 0.2, metallic: 0.15, doubleSided: true });
+}
+
+/* 18 — fern / undergrowth clump */
+{
+  const b = makeBuilder();
+  const rand = mulberry32(161);
+  for (let i = 0; i < 11; i++) {
+    const a = (i / 11) * Math.PI * 2 + rand() * 0.5;
+    const len = 0.9 + rand() * 1.4;
+    const rootY = 0.15 + rand() * 0.3;
+    const droop = 0.35 + rand() * 0.6;
+    const w = 0.06 + rand() * 0.06;
+    const root = [Math.cos(a) * 0.08, rootY, Math.sin(a) * 0.08];
+    const tip = [Math.cos(a) * len, rootY + 0.5 - droop, Math.sin(a) * len];
+    const perp = [Math.cos(a + Math.PI / 2) * w, 0, Math.sin(a + Math.PI / 2) * w];
+    const green = [0.1 + rand() * 0.06, 0.28 + rand() * 0.12, 0.14 + rand() * 0.06];
+    const base = b.positions.length / 3;
+    pushVertex(b, [root[0] - perp[0], root[1], root[2] - perp[2]], green, [0, 0]);
+    pushVertex(b, [root[0] + perp[0], root[1], root[2] + perp[2]], green, [1, 0]);
+    pushVertex(b, [tip[0] - perp[0] * 0.2, tip[1], tip[2] - perp[2] * 0.2], [green[0] * 1.5, green[1] * 1.4, green[2] * 1.2], [0, 1]);
+    pushVertex(b, [tip[0] + perp[0] * 0.2, tip[1], tip[2] + perp[2] * 0.2], [green[0] * 1.5, green[1] * 1.4, green[2] * 1.2], [1, 1]);
+    addTriangle(b, base, base + 1, base + 2);
+    addTriangle(b, base + 1, base + 3, base + 2);
+  }
+  define('fern', b, { baseColor: [1, 1, 1, 1], roughness: 0.9, metallic: 0, doubleSided: true });
+}
+
+/* 19 — river reeds */
+{
+  const b = makeBuilder();
+  const rand = mulberry32(171);
+  for (let i = 0; i < 16; i++) {
+    const a = rand() * Math.PI * 2;
+    const d = rand() * 0.9;
+    const x = Math.cos(a) * d;
+    const z = Math.sin(a) * d;
+    const h = 1.1 + rand() * 1.3;
+    const leanX = (rand() - 0.5) * 0.7;
+    const leanZ = (rand() - 0.5) * 0.7;
+    const w = 0.035 + rand() * 0.03;
+    const green = [0.18 + rand() * 0.08, 0.34 + rand() * 0.12, 0.16 + rand() * 0.06];
+    const base = b.positions.length / 3;
+    pushVertex(b, [x - w, 0, z], green, [0, 0]);
+    pushVertex(b, [x + w, 0, z], green, [1, 0]);
+    pushVertex(b, [x + leanX, h, z + leanZ], [green[0] * 1.3, green[1] * 1.25, green[2] * 1.2], [0.5, 1]);
+    addTriangle(b, base, base + 1, base + 2);
+    addTriangle(b, base + 1, base + 2, base + 2);
+    // Seed head.
+    addOctahedron(b, { cx: x + leanX, cy: h + 0.14, cz: z + leanZ, radius: 0.12 + rand() * 0.05, color: [0.42, 0.36, 0.2] });
+  }
+  define('reeds', b, { baseColor: [1, 1, 1, 1], roughness: 0.88, metallic: 0, doubleSided: true });
+}
+
 /* -------------------------------------------------------------------------- */
 /* Write + validate                                                           */
 /* -------------------------------------------------------------------------- */

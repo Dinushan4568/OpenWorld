@@ -12,7 +12,7 @@ import { WORLD } from '../config';
 import { clamp, lerp, smoothstep, srgbToLinear } from '../util/math';
 import { terrainNoise, detailNoise } from '../util/noise';
 import { buildMesh, createMeshData, type MeshData } from '../util/meshBuilder';
-import { biomeWeights, farHeight, heightAt, trailInfluence } from './heightfield';
+import { biomeWeights, farHeight, heightAt, regionTintAt, trailInfluence } from './heightfield';
 
 interface TerrainPalette {
   grass: [number, number, number];
@@ -35,6 +35,11 @@ const PALETTE: TerrainPalette = {
   dirt: [0.4, 0.32, 0.25],
   silt: [0.14, 0.19, 0.18],
 };
+
+/** Tiles per axis in the walkable terrain. 3x3 keeps each mesh ~300 m. */
+const TILE_GRID = 3;
+/** Quads per tile edge. Detail matches the old 288-wide single mesh. */
+const TILE_RESOLUTION = 96;
 
 function mix(a: [number, number, number], b: [number, number, number], t: number): [number, number, number] {
   return [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
@@ -64,9 +69,14 @@ function terrainColor(
   const steep = clamp((0.9 - normalY) * 3.4, 0, 1);
   color = mix(color, PALETTE.rock, steep * 0.72);
 
-  // Lake bed silt.
+  // Lake bed and river bed silt.
   const submerged = clamp(1 - smoothstep(WORLD.waterLevel - 0.4, WORLD.waterLevel + 1.2, height), 0, 1);
   color = mix(color, PALETTE.silt, submerged * 0.85);
+
+  // Region identity: the city floor is concrete-pale, the facility grounds are
+  // ash-grey, the forest floor is greener and the river corridor is damp.
+  const tint = regionTintAt(x, z, 1);
+  color = [color[0] * tint[0], color[1] * tint[1], color[2] * tint[2]];
 
   // Subtle large-scale tonal variation keeps the valley from reading as flat colour.
   const tone = 0.9 + terrainNoise.fbm(x * 0.008, z * 0.008, 3) * 0.18;
@@ -78,11 +88,16 @@ function terrainColor(
   ];
 }
 
+/**
+ * Ground surface, split into a 3x3 grid of independently frustum-culled tiles
+ * so the 900 m basin draws in the pieces the camera can actually see, plus a
+ * cheap far-heightfield skirt that closes the horizon.
+ */
 export class Terrain {
   readonly root: Entity;
-  readonly mainMesh: Mesh;
-  private readonly farMesh: Mesh;
+  private readonly meshes: Mesh[] = [];
   private readonly material: StandardMaterial;
+  private readonly farMaterial: StandardMaterial;
   readonly bounds = WORLD.terrainSize * 0.5;
 
   constructor(app: AppBase, detailTexture: Texture) {
@@ -100,27 +115,38 @@ export class Terrain {
     this.material.useFog = true;
     this.material.update();
 
-    this.mainMesh = buildMesh(device, this.buildMainTerrain(), 'terrain-main');
-    const render = new Entity('terrain-main');
-    render.addComponent('render');
-    render.render!.meshInstances = [new MeshInstance(this.mainMesh, this.material)];
-    render.render!.castShadows = false;
-    render.render!.receiveShadows = true;
-    this.root.addChild(render);
+    const tileSize = WORLD.terrainSize / TILE_GRID;
+    const half = WORLD.terrainSize / 2;
+    for (let tz = 0; tz < TILE_GRID; tz++) {
+      for (let tx = 0; tx < TILE_GRID; tx++) {
+        const minX = -half + tx * tileSize;
+        const minZ = -half + tz * tileSize;
+        const mesh = buildMesh(device, this.buildTile(minX, minZ, tileSize), `terrain-tile-${tx}-${tz}`);
+        this.meshes.push(mesh);
+        const entity = new Entity(`terrain-tile-${tx}-${tz}`);
+        entity.addComponent('render');
+        entity.render!.meshInstances = [new MeshInstance(mesh, this.material)];
+        entity.render!.castShadows = false;
+        entity.render!.receiveShadows = true;
+        this.root.addChild(entity);
+      }
+    }
 
     // Distant mountain ring: cheap silhouette that closes the horizon.
-    const farMaterial = new StandardMaterial();
-    farMaterial.diffuse = new Color(1, 1, 1, 1);
-    farMaterial.useMetalness = true;
-    farMaterial.metalness = 0.0;
-    farMaterial.gloss = 0.08;
-    farMaterial.useFog = true;
-    farMaterial.update();
+    this.farMaterial = new StandardMaterial();
+    this.farMaterial.name = 'terrain-far-material';
+    this.farMaterial.diffuse = new Color(1, 1, 1, 1);
+    this.farMaterial.useMetalness = true;
+    this.farMaterial.metalness = 0;
+    this.farMaterial.gloss = 0.08;
+    this.farMaterial.useFog = true;
+    this.farMaterial.update();
 
-    this.farMesh = buildMesh(device, this.buildFarTerrain(), 'terrain-far');
+    const farMesh = buildMesh(device, this.buildFarTerrain(), 'terrain-far');
+    this.meshes.push(farMesh);
     const farEntity = new Entity('terrain-far');
     farEntity.addComponent('render');
-    farEntity.render!.meshInstances = [new MeshInstance(this.farMesh, farMaterial)];
+    farEntity.render!.meshInstances = [new MeshInstance(farMesh, this.farMaterial)];
     farEntity.render!.castShadows = false;
     farEntity.render!.receiveShadows = false;
     this.root.addChild(farEntity);
@@ -128,30 +154,28 @@ export class Terrain {
     app.root.addChild(this.root);
   }
 
-  private buildMainTerrain(): MeshData {
+  private buildTile(minX: number, minZ: number, tileSize: number): MeshData {
+    const resolution = TILE_RESOLUTION;
+    const step = tileSize / resolution;
     const size = WORLD.terrainSize;
-    const resolution = WORLD.terrainResolution;
-    const step = size / resolution;
-    const half = size / 2;
     const cols = resolution + 1;
     const data = createMeshData();
     const heights = new Float32Array(cols * cols);
 
     for (let iz = 0; iz <= resolution; iz++) {
       for (let ix = 0; ix <= resolution; ix++) {
-        const x = -half + ix * step;
-        const z = -half + iz * step;
+        const x = minX + ix * step;
+        const z = minZ + iz * step;
         const h = heightAt(x, z);
         heights[iz * cols + ix] = h;
-        const uv: [number, number] = [x / size, z / size];
         data.positions.push(x, h, z);
-        data.uvs.push(uv[0], uv[1]);
+        // World-space UVs keep the detail texture continuous across tile seams.
+        data.uvs.push(x / size, z / size);
         data.normals.push(0, 1, 0);
         data.colors.push(1, 1, 1, 1);
       }
     }
 
-    // Normals from the height grid (cheap and visually smooth).
     for (let iz = 0; iz <= resolution; iz++) {
       for (let ix = 0; ix <= resolution; ix++) {
         const i = iz * cols + ix;
@@ -167,8 +191,8 @@ export class Terrain {
         data.normals[i * 3 + 1] = ny / len;
         data.normals[i * 3 + 2] = nz / len;
 
-        const x = -half + ix * step;
-        const z = -half + iz * step;
+        const x = minX + ix * step;
+        const z = minZ + iz * step;
         const color = terrainColor(x, z, heights[i], ny / len);
         data.colors[i * 4] = color[0];
         data.colors[i * 4 + 1] = color[1];
@@ -207,7 +231,7 @@ export class Terrain {
         const h = farHeight(x, z);
         heights[iz * cols + ix] = h;
         data.positions.push(x, h, z);
-        data.uvs.push(0, 0);
+        data.uvs.push(x / size, z / size);
         data.normals.push(0, 1, 0);
         data.colors.push(1, 1, 1, 1);
       }
@@ -249,9 +273,9 @@ export class Terrain {
   }
 
   destroy(): void {
-    this.mainMesh.destroy();
-    this.farMesh.destroy();
+    for (const mesh of this.meshes) mesh.destroy();
     this.material.destroy();
+    this.farMaterial.destroy();
     this.root.destroy();
   }
 }

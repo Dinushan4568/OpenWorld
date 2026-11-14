@@ -36,7 +36,12 @@ const BLOCKS: ReadonlyArray<{ title: string; lines: string[]; note?: string }> =
   {
     title: 'Phase 01 — Foundation',
     lines: ['Rendering, world, traversal, interface', 'Objective: recover five echoes'],
-    note: 'Phase 02 continues the expedition.',
+    note: 'Phase 02 rebuilt the expedition and its controller.',
+  },
+  {
+    title: 'Phase 03 — The living valley',
+    lines: ['Five regions, streamed chunk content', 'Crystal River & waterfalls · day/night cycle'],
+    note: 'The valley beyond the gate is open to explore.',
   },
 ];
 
