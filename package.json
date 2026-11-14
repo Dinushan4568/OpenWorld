@@ -1,9 +1,9 @@
 {
   "name": "echoes-of-the-lost-world",
   "private": true,
-  "version": "0.6.0",
+  "version": "0.7.0",
   "type": "module",
-  "description": "Echoes of the Lost World — original sci-fi open-world adventure (Phase 06)",
+  "description": "Echoes of the Lost World — original sci-fi open-world adventure (Phase 07)",
   "scripts": {
     "assets": "node tools/build-assets.mjs && node tools/build-character.mjs",
     "dev": "vite --host 0.0.0.0 --port 5173",
@@ -11,7 +11,8 @@
     "preview": "vite preview --host 0.0.0.0 --port 5173",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "benchmark": "vite-node tools/benchmark-world.ts"
   },
   "dependencies": {
     "playcanvas": "^2.12.0"
@@ -21,6 +22,7 @@
     "jsdom": "^31.0.1",
     "typescript": "^5.7.0",
     "vite": "^6.0.0",
+    "vite-node": "^2.1.9",
     "vitest": "^2.1.9"
   }
 }

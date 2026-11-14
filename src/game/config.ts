@@ -7,8 +7,8 @@ export const GAME = {
   title: 'Echoes of the Lost World',
   shortTitle: 'Echoes',
   subtitle: 'An expedition beyond the silence',
-  version: '0.6.0',
-  phase: 'Phase 06 — Field Record',
+  version: '0.7.0',
+  phase: 'Phase 07 — Fidelity Pass',
   studio: 'Hollow Lantern Studio',
   storageKey: 'eotlw.settings.v1',
   progressKey: 'eotlw.progress.v1',
@@ -22,15 +22,24 @@ export interface QualityProfile {
   description: string;
   pixelRatioCap: number;
   renderScale: number;
+  /** Lower bound for dynamic resolution scaling. */
+  adaptiveMinScale: number;
   shadows: boolean;
   shadowResolution: number;
   shadowDistance: number;
+  shadowCascades: number;
+  shadowFilter: 'pcf3' | 'pcf5';
   samples: number;
   bloom: boolean;
+  bloomLevel: number;
   ssao: boolean;
+  ssaoSamples: number;
+  colorEnhance: boolean;
   anisotropy: number;
   drawDistance: number;
   scatterDensity: number;
+  /** Relative size of generated procedural textures (0.5-1). */
+  textureScale: number;
 }
 
 export const QUALITY_PROFILES: Record<QualityPreset, QualityProfile> = {
@@ -40,15 +49,22 @@ export const QUALITY_PROFILES: Record<QualityPreset, QualityProfile> = {
     description: 'Integrated graphics · 720p-class',
     pixelRatioCap: 1,
     renderScale: 0.75,
+    adaptiveMinScale: 0.55,
     shadows: false,
     shadowResolution: 512,
     shadowDistance: 70,
+    shadowCascades: 1,
+    shadowFilter: 'pcf3',
     samples: 1,
     bloom: false,
+    bloomLevel: 3,
     ssao: false,
+    ssaoSamples: 8,
+    colorEnhance: false,
     anisotropy: 2,
     drawDistance: 340,
     scatterDensity: 0.55,
+    textureScale: 0.5,
   },
   medium: {
     id: 'medium',
@@ -56,15 +72,22 @@ export const QUALITY_PROFILES: Record<QualityPreset, QualityProfile> = {
     description: 'Laptop GPUs · balanced',
     pixelRatioCap: 1.25,
     renderScale: 0.9,
+    adaptiveMinScale: 0.65,
     shadows: true,
     shadowResolution: 1024,
     shadowDistance: 110,
+    shadowCascades: 2,
+    shadowFilter: 'pcf3',
     samples: 2,
     bloom: true,
+    bloomLevel: 4,
     ssao: false,
+    ssaoSamples: 8,
+    colorEnhance: false,
     anisotropy: 4,
     drawDistance: 480,
     scatterDensity: 0.8,
+    textureScale: 0.75,
   },
   high: {
     id: 'high',
@@ -72,15 +95,22 @@ export const QUALITY_PROFILES: Record<QualityPreset, QualityProfile> = {
     description: 'Dedicated GPUs · recommended',
     pixelRatioCap: 1.75,
     renderScale: 1,
+    adaptiveMinScale: 0.7,
     shadows: true,
     shadowResolution: 2048,
     shadowDistance: 150,
+    shadowCascades: 3,
+    shadowFilter: 'pcf5',
     samples: 4,
     bloom: true,
+    bloomLevel: 6,
     ssao: true,
+    ssaoSamples: 8,
+    colorEnhance: true,
     anisotropy: 8,
     drawDistance: 640,
     scatterDensity: 1,
+    textureScale: 1,
   },
   ultra: {
     id: 'ultra',
@@ -88,15 +118,22 @@ export const QUALITY_PROFILES: Record<QualityPreset, QualityProfile> = {
     description: 'Cinematic fidelity · high-end',
     pixelRatioCap: 2,
     renderScale: 1,
+    adaptiveMinScale: 0.75,
     shadows: true,
     shadowResolution: 4096,
     shadowDistance: 190,
+    shadowCascades: 4,
+    shadowFilter: 'pcf5',
     samples: 4,
     bloom: true,
+    bloomLevel: 8,
     ssao: true,
+    ssaoSamples: 12,
+    colorEnhance: true,
     anisotropy: 16,
     drawDistance: 780,
     scatterDensity: 1.25,
+    textureScale: 1,
   },
 };
 

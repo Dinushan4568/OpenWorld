@@ -1,7 +1,7 @@
-import type { AppBase } from 'playcanvas';
+import type { AppBase, Texture } from 'playcanvas';
 import { WORLD, type QualityProfile } from '../config';
 import type { AssetManager } from '../core/AssetManager';
-import { createTexture, generateDetailTexture, generateWaterNormalMap } from '../util/textures';
+import { createTexture, generateDetailTexture, generateTerrainNormalMap, generateWaterNormalMap } from '../util/textures';
 import { Atmosphere } from './Atmosphere';
 import { CreatureManager } from '../creatures/CreatureManager';
 import { ChunkManager, type ChunkStats } from './ChunkManager';
@@ -78,6 +78,7 @@ export class World {
   private readonly profile: QualityProfile;
   private readonly collectedIds: readonly string[];
   private readonly options: WorldOptions;
+  private readonly textures: Texture[] = [];
 
   constructor(
     app: AppBase,
@@ -109,30 +110,50 @@ export class World {
     };
 
     await stage('Synthesising surface detail', 0.02);
-    const grass = createTexture(this.app.graphicsDevice, generateDetailTexture('grass', 512), {
+    const textureScale = Math.max(0.5, Math.min(1, this.profile.textureScale));
+    const grass = createTexture(this.app.graphicsDevice, generateDetailTexture('grass', Math.max(128, Math.round(512 * textureScale))), {
       srgb: true,
       repeat: true,
       anisotropy: this.profile.anisotropy,
       name: 'detail-grass',
     });
-    const waterNormal = createTexture(this.app.graphicsDevice, generateWaterNormalMap(512), {
-      srgb: false,
-      repeat: true,
-      anisotropy: this.profile.anisotropy,
-      name: 'water-normal',
-    });
-    const waterDetail = createTexture(this.app.graphicsDevice, generateDetailTexture('stone', 256), {
-      srgb: true,
-      repeat: true,
-      anisotropy: 2,
-      name: 'water-detail',
-    });
+    const terrainNormal = createTexture(
+      this.app.graphicsDevice,
+      generateTerrainNormalMap(Math.max(128, Math.round(256 * textureScale))),
+      {
+        srgb: false,
+        repeat: true,
+        anisotropy: this.profile.anisotropy,
+        name: 'terrain-normal',
+      },
+    );
+    const waterNormal = createTexture(
+      this.app.graphicsDevice,
+      generateWaterNormalMap(Math.max(128, Math.round(512 * textureScale))),
+      {
+        srgb: false,
+        repeat: true,
+        anisotropy: this.profile.anisotropy,
+        name: 'water-normal',
+      },
+    );
+    const waterDetail = createTexture(
+      this.app.graphicsDevice,
+      generateDetailTexture('stone', Math.max(128, Math.round(256 * textureScale))),
+      {
+        srgb: true,
+        repeat: true,
+        anisotropy: 2,
+        name: 'water-detail',
+      },
+    );
+    this.textures.push(grass, terrainNormal, waterNormal, waterDetail);
 
     await stage('Painting the sky', 0.1);
-    this.sky = new SkySystem(this.app, this.profile.anisotropy);
+    this.sky = new SkySystem(this.app, this.profile.anisotropy, textureScale);
 
     await stage('Raising the basin', 0.22);
-    this.terrain = new Terrain(this.app, grass);
+    this.terrain = new Terrain(this.app, grass, terrainNormal);
 
     await stage('Filling Mirrorwater', 0.32);
     this.water = new Water(this.app, waterNormal, waterDetail);
@@ -181,7 +202,7 @@ export class World {
       x: this.spawn.x,
       y: this.spawn.y,
       z: this.spawn.z,
-    });
+    }, this.profile);
 
     await stage('Waking the machines', 0.97);
     this.creatures = new CreatureManager(this.app, this.collision);
@@ -199,6 +220,7 @@ export class World {
     this.chunks.update(context.player.x, context.player.z);
     this.landmarks.update(dt, time);
     this.dayNight.update(dt, context.player, context.player);
+    this.atmosphere.setNight(this.dayNight.current.night);
     this.lighting.update(context.player.x, context.player.z, context.player.y);
     this.lighting.tick(time);
     this.atmosphere.update(dt, time, context.player, context.yaw);
@@ -254,5 +276,7 @@ export class World {
     this.water?.destroy();
     this.terrain?.destroy();
     this.sky?.destroy();
+    for (const texture of this.textures) texture.destroy();
+    this.textures.length = 0;
   }
 }

@@ -11,6 +11,7 @@ import {
 } from 'playcanvas';
 import { WORLD } from '../config';
 import type { AssetManager } from '../core/AssetManager';
+import type { QualityProfile } from '../config';
 import { clamp, createRandom, damp, lerp } from '../util/math';
 import { addQuad, buildMesh, createMeshData } from '../util/meshBuilder';
 import { createTexture, generateGlowSprite, generateMoteSprite } from '../util/textures';
@@ -19,6 +20,11 @@ import { heightAt } from './heightfield';
 interface MoteGroup {
   entity: Entity;
   speed: number;
+  phase: number;
+}
+
+interface FireflyGroup {
+  entity: Entity;
   phase: number;
 }
 
@@ -34,22 +40,34 @@ export class Atmosphere {
   private readonly droneRings: Entity[] = [];
   private readonly droneLight: Entity;
   private readonly motes: MoteGroup[] = [];
+  private readonly fireflies: FireflyGroup[] = [];
+  private fireflyMaterial!: StandardMaterial;
   private readonly mist: Entity[] = [];
+  private readonly mistMaterials: StandardMaterial[] = [];
   private readonly pulse: Entity;
   private readonly pulseMaterial: StandardMaterial;
   private readonly materials: StandardMaterial[] = [];
+  private readonly textures: Texture[] = [];
   private readonly meshes: Mesh[] = [];
   private readonly droneVelocity = { x: 0, z: 0 };
   private pulseTime = 1.2;
   private readonly pulseDuration = 1.25;
   private droneAnchor = { x: 0, y: 0, z: 0 };
+  private night = 0;
+  private nightApplied = -1;
 
-  constructor(app: AppBase, assets: AssetManager, playerStart: { x: number; y: number; z: number }) {
+  constructor(
+    app: AppBase,
+    assets: AssetManager,
+    playerStart: { x: number; y: number; z: number },
+    quality?: QualityProfile,
+  ) {
     this.app = app;
     this.assets = assets;
     this.root = new Entity('atmosphere');
     app.root.addChild(this.root);
 
+    const density = Math.max(0.4, Math.min(1.4, quality?.scatterDensity ?? 1));
     const moteTexture = createTexture(app.graphicsDevice, generateMoteSprite(), {
       srgb: true,
       mipmaps: false,
@@ -59,6 +77,11 @@ export class Atmosphere {
       srgb: true,
       mipmaps: true,
       name: 'mist-glow',
+    });
+    const fireflyTexture = createTexture(app.graphicsDevice, generateGlowSprite(128, [0.52, 1, 0.68]), {
+      srgb: true,
+      mipmaps: true,
+      name: 'firefly-glow',
     });
 
     this.drone = new Entity('survey-drone');
@@ -77,7 +100,9 @@ export class Atmosphere {
     });
     this.drone.addChild(this.droneLight);
 
-    this.buildMotes(moteTexture);
+    this.textures.push(moteTexture, glowTexture, fireflyTexture);
+    this.buildMotes(moteTexture, density);
+    this.buildFireflies(fireflyTexture, density);
     this.buildMist(glowTexture);
 
     this.pulseMaterial = new StandardMaterial();
@@ -92,6 +117,7 @@ export class Atmosphere {
     this.pulseMaterial.useFog = false;
     this.pulseMaterial.update();
     this.materials.push(this.pulseMaterial);
+    this.fireflyMaterial.opacity = 0;
 
     this.pulse = new Entity('echo-pulse');
     this.pulse.addComponent('render', { type: 'torus', material: this.pulseMaterial });
@@ -116,11 +142,11 @@ export class Atmosphere {
     }
   }
 
-  private buildMotes(texture: Texture): void {
+  private buildMotes(texture: Texture, density = 1): void {
     const rand = createRandom(30303);
     for (let group = 0; group < 3; group++) {
       const data = createMeshData();
-      const count = 26;
+      const count = Math.max(10, Math.round(26 * density));
       for (let i = 0; i < count; i++) {
         const radius = 3 + rand() * 26;
         const angle = rand() * Math.PI * 2;
@@ -168,6 +194,75 @@ export class Atmosphere {
     }
   }
 
+  private buildFireflies(texture: Texture, density = 1): void {
+    const rand = createRandom(70707);
+    const material = new StandardMaterial();
+    material.name = 'valley-fireflies';
+    material.diffuse = new Color(0.55, 1, 0.66, 1);
+    material.emissive = new Color(0.4, 1, 0.62, 1);
+    material.emissiveIntensity = 1.4;
+    material.diffuseMap = texture;
+    material.opacityMap = texture;
+    material.opacity = 0;
+    material.useLighting = false;
+    material.blendType = BLEND_ADDITIVEALPHA;
+    material.depthWrite = false;
+    material.cull = CULLFACE_NONE;
+    material.useFog = true;
+    material.update();
+    this.materials.push(material);
+    this.fireflyMaterial = material;
+
+    for (let group = 0; group < 3; group++) {
+      const data = createMeshData();
+      const count = Math.max(8, Math.round(14 * density));
+      for (let i = 0; i < count; i++) {
+        const angle = rand() * Math.PI * 2;
+        const radius = 2.5 + rand() * 10;
+        const x = Math.cos(angle) * radius;
+        const z = Math.sin(angle) * radius;
+        const y = 0.4 + rand() * 2.6;
+        const size = 0.045 + rand() * 0.075;
+        addQuad(
+          data,
+          { p: [x - size, y - size, z], uv: [0, 0], c: [1, 1, 1, 1] },
+          { p: [x + size, y - size, z], uv: [1, 0], c: [1, 1, 1, 1] },
+          { p: [x + size, y + size, z], uv: [1, 1], c: [1, 1, 1, 1] },
+          { p: [x - size, y + size, z], uv: [0, 1], c: [1, 1, 1, 1] },
+        );
+      }
+      const mesh = buildMesh(this.app.graphicsDevice, data, `fireflies-${group}`);
+      this.meshes.push(mesh);
+      const entity = new Entity(`fireflies-${group}`);
+      entity.addComponent('render');
+      entity.render!.meshInstances = [new MeshInstance(mesh, material)];
+      entity.render!.castShadows = false;
+      entity.render!.receiveShadows = false;
+      entity.enabled = false;
+      this.root.addChild(entity);
+      this.fireflies.push({ entity, phase: rand() * Math.PI * 2 });
+    }
+  }
+
+  /** Night-only bioluminescence; disabled entirely during daylight. */
+  setNight(night: number): void {
+    const value = clamp(night, 0, 1);
+    // World calls this every frame; only touch the material when the cycle has
+    // actually moved enough to be visible. Re-running material.update() per
+    // frame is needless shader/uniform churn.
+    if (Math.abs(value - this.nightApplied) < 0.008) return;
+    this.night = value;
+    this.nightApplied = value;
+    this.fireflyMaterial.opacity = this.night * 0.8;
+    this.fireflyMaterial.emissiveIntensity = 0.8 + this.night * 1.2;
+    this.fireflyMaterial.update();
+    for (const group of this.fireflies) group.entity.enabled = this.night > 0.08;
+    for (const material of this.mistMaterials) {
+      material.opacity = 0.12 + this.night * 0.1;
+      material.update();
+    }
+  }
+
   private buildMist(texture: Texture): void {
     const rand = createRandom(4848);
     for (let i = 0; i < 4; i++) {
@@ -184,6 +279,7 @@ export class Atmosphere {
       material.useFog = true;
       material.update();
       this.materials.push(material);
+      this.mistMaterials.push(material);
 
       const data = createMeshData();
       const size = 120 + rand() * 90;
@@ -256,6 +352,19 @@ export class Atmosphere {
       group.entity.rotate(0, 4 * dt, 0);
     }
 
+    if (this.night > 0.08) {
+      for (let i = 0; i < this.fireflies.length; i++) {
+        const group = this.fireflies[i];
+        const orbit = 0.4 + i * 0.22;
+        group.entity.setPosition(
+          player.x + Math.cos(group.phase + time * orbit) * (1.5 + i * 0.8),
+          player.y + 0.8 + Math.sin(time * 0.55 + group.phase) * 0.8,
+          player.z + Math.sin(group.phase + time * orbit) * (1.5 + i * 0.8),
+        );
+        group.entity.rotate(0, (5 + i * 2) * dt, 0);
+      }
+    }
+
     for (let i = 0; i < this.mist.length; i++) {
       const entity = this.mist[i];
       const y = entity.getPosition().y;
@@ -281,6 +390,8 @@ export class Atmosphere {
   destroy(): void {
     for (const mesh of this.meshes) mesh.destroy();
     for (const material of this.materials) material.destroy();
+    for (const texture of this.textures) texture.destroy();
+    this.textures.length = 0;
     this.root.destroy();
     void this.app;
   }

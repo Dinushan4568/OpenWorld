@@ -17,10 +17,10 @@ export class SkySystem {
   private readonly lightingSource: Texture;
   private readonly app: AppBase;
 
-  constructor(app: AppBase, anisotropy = 4) {
+  constructor(app: AppBase, anisotropy = 4, textureScale = 1) {
     this.app = app;
     const device = app.graphicsDevice;
-    const { canvas, sunDirection } = generateSkyTexture();
+    const { canvas, sunDirection } = generateSkyTexture(2048 * Math.max(0.5, Math.min(1, textureScale)));
     this.source = createTexture(device, canvas, {
       srgb: true,
       mipmaps: true,
@@ -31,9 +31,9 @@ export class SkySystem {
     const skybox = EnvLighting.generateSkyboxCubemap(this.source);
     this.lightingSource = EnvLighting.generateLightingSource(this.source, { size: 128 });
     const envAtlas = EnvLighting.generateAtlas(this.lightingSource, {
-      size: 256,
-      numReflectionSamples: 128,
-      numAmbientSamples: 512,
+      size: textureScale < 0.7 ? 128 : 256,
+      numReflectionSamples: textureScale < 0.7 ? 64 : 128,
+      numAmbientSamples: textureScale < 0.7 ? 256 : 512,
     });
 
     app.scene.skybox = skybox;

@@ -15,6 +15,9 @@ recovered memories and two endings. Mission progress is saved locally and every 
 from the world, not just described in data. Phase 06 adds the field record: a complete RPG
 progression layer with experience and levels, a five-discipline skill tree, nine exploration
 abilities, resources, equipment upgrades, crafting, a character sheet and validated IndexedDB saves.
+Phase 07 is the presentation pass: quality presets that actually change the renderer, adaptive
+internal resolution, image-based lighting, SSAO, colour grading, terrain normals, clearcoat water,
+instanced vegetation and props, a time-sliced streaming queue and new firefly/foam atmosphere.
 
 Everything is original work. The project is inspired by the *feeling* of exploring a vast, overgrown
 world — it does not use, copy or reproduce any copyrighted characters, assets, environments, stories
@@ -37,8 +40,9 @@ The dev server binds `0.0.0.0` so it also works behind the sandbox preview proxy
 ```bash
 npm run build        # typecheck + production bundle into dist/
 npm run preview      # serve the production bundle
-npm test             # 182 unit/DOM/integration tests (Vitest)
+npm test             # 189 unit/DOM/integration tests (Vitest)
 npm run typecheck    # tsc --noEmit
+npm run benchmark    # headless CPU streaming/instancing benchmark
 npm run assets       # regenerate the GLB prop library + the Wayfarer character
 ```
 
@@ -65,6 +69,90 @@ WebGPU first and falls back to WebGL 2 automatically.
 
 Settings (display, camera, audio, accessibility) are reachable from the main menu and the pause
 screen, apply immediately and persist to `localStorage`.
+
+---
+
+## What Phase 07 adds — fidelity without frame-time roulette
+
+Phase 07 is a rendering and streaming pass rather than a story pass. The goal is a visibly richer
+valley that keeps a stable frame time on mid-range hardware, so every effect has a quality budget and
+a fallback.
+
+### Quality presets that are actually wired up
+
+`QUALITY_PROFILES` in `src/game/config.ts` now drives pixel-ratio caps, draw distance, shadow
+cascades and resolution, texture scale, scatter density, bloom, SSAO, anisotropic filtering and the
+adaptive-resolution floor. **Low** keeps shadows off and renders at a capped pixel ratio; **Medium**
+turns on soft shadows and SSAO; **High** adds colour enhancement, denser scatter, a terrain normal
+map and 2048 px cascaded shadows; **Ultra** adds another cascade and the densest vegetation. The
+settings screen exposes an **Adaptive resolution** switch, and the preset is re-applied live.
+
+### Adaptive resolution and renderer fallback
+
+`core/adaptive.ts` samples raw frame time (stall frames over 250 ms are ignored), averages it over a
+0.75 s window and moves the internal render scale down after two slow windows or up after four
+comfortable ones. The floor is per-preset (0.5–0.7), scaling steps are 0.08 down / 0.05 up, and the
+HUD (F3) reports the live scale, draw calls, VRAM and adaptive phase. Device creation prefers
+**WebGPU** and falls back to **WebGL 2**; unsupported post effects are disabled through their own
+preset flags rather than crashing the boot.
+
+### Image quality
+
+- **Lighting:** HDR `CameraFrame` with ACES tone mapping, bloom driven by the gate and shards,
+  vignette, subtle colour grading/highlight roll-off, shadow-distance culling and cascades sized by
+  preset. The sky canvas feeds a prefiltered environment atlas for PBR ambient reflections.
+- **Terrain:** vertex-painted meshes plus a tileable generated normal map, keeping the ground
+  readable at grazing angles without another texture authoring step.
+- **Water:** clearcoat response, animated dual normal/detail maps, environment reflections and a
+  traced shoreline foam ribbon around Mirrorwater.
+- **Vegetation and atmosphere:** ground cover and wildflowers are shared geometries; grass tufts are
+  instanced with per-instance scale and rotation, and scatter props are instanced per model. Night
+  adds three additive firefly swarms, while the existing motes/mist/waterfall systems remain
+  density-scaled.
+
+### Streaming and CPU work
+
+The chunk queue is time-sliced (4 ms budget per frame) and chunk generation uses a cached height grid
+for ground cover instead of thousands of direct noise samples. Instanced scatter batches use
+per-batch custom AABBs so frustum culling remains correct, and mid-ring chunks use merged
+silhouettes. Grass and props share base meshes and materials; per-chunk instance matrices are the
+only geometry data created while walking.
+
+`npm run benchmark` runs a JSDOM PlayCanvas **null-device** CPU benchmark (no GPU rasterisation). It
+now reports average, median, p95 and worst update time. On the Phase 07 reference runs: **preload
+382 ms → 79–125 ms**; **95 streaming updates 3.65 ms average / 35.93 ms worst → 0.7–1.0 ms average,
+0.1 ms median, 4–6 ms p95, 6–10 ms worst**; 56 resident chunks and ~9,700 instanced grass/prop
+instances across 180 render entities. The remaining cost is normal simulation and chunk
+bookkeeping, not one-frame geometry construction. Use F3 in a real browser for GPU draw calls and
+frame time.
+
+### Texture and memory budget
+
+Runtime textures are generated at `textureScale` (0.5/0.75/1/1), mipmapped, anisotropically filtered
+and owned by `World`; sky, atlas, reflection and ambient sample sizes drop with the preset. The
+project ships no large opaque art textures (props and the character are small GLBs), so GPU
+block-compression would add a build dependency without reducing a meaningful payload. The texture
+path is therefore quality-scaled RGBA8 + mipmaps rather than KTX2/Basis; the explicit budget and
+disposal path are in place if authored compressed textures are added later.
+
+### Phase 07 tests and benchmark
+
+`adaptive` covers windowing, hysteresis, stalls, bounds and snapshots. `chunk-instancing` builds a
+real chunk field on a null device and asserts that instancing reduces render entities and that all
+instance buffers/meshes are released on dispose. `streaming` covers the revised LOD plan. The full
+suite is **189 tests across 28 files**; `npm run benchmark` prints the CPU streaming numbers above.
+
+### Phase 07 manual checklist
+
+1. Set each preset and confirm the HUD/live scene responds: low removes shadows and SSAO, high
+   restores them, ultra increases grass density and shadow cascades.
+2. Turn Adaptive resolution on and off while running; F3 should show the internal percentage move
+   after a few seconds under load, then recover.
+3. Walk from the lake toward the forest at speed; the streaming queue should never produce a
+   multi-frame freeze. Watch the shoreline foam and water highlight at golden hour.
+4. Visit Mirrorwater at night for fireflies and the clearcoat lake; check the tree line for
+   instanced silhouettes at the mid-ring boundary.
+5. Reload with `?quality=low` and confirm the game still boots through the WebGL 2 path.
 
 ---
 
@@ -379,7 +467,8 @@ src/
     config.ts             tunables, quality presets, world layout, model manifest
     core/
       Engine.ts           PlayCanvas device/application/camera/post-FX ownership
-      AssetManager.ts     GLB loading with retries, progress and fallbacks
+      adaptive.ts         tested dynamic-resolution controller (pure data)
+      AssetManager.ts     GLB loading with retries, progress and instancing helpers
       Input.ts            keyboard/mouse/pointer-lock/touch, engine-independent
       AudioManager.ts     fully synthesised Web Audio (wind, drone, foley, UI)
       settings.ts         validated, persisted settings and progress stores
@@ -407,6 +496,7 @@ src/
   styles/app.css          the entire design system
 tools/build-assets.mjs    deterministic GLB writer for the nineteen prop models
 tools/build-character.mjs deterministic GLB writer for the Wayfarer humanoid
+tools/benchmark-world.ts  null-device streaming/instancing benchmark
 tests/                    Vitest suites (math, heightfield, stores, assets, UI, boot failure,
                           collision, gait, locomotion, character asset, camera)
 ```
@@ -439,7 +529,7 @@ character's motion is synthesised in TypeScript rather than baked into animation
 
 ## Testing
 
-`npm test` runs 182 tests across twenty-six suites:
+`npm test` runs 189 tests across twenty-eight suites:
 
 - `math` / `heightfield` / `settings` / `assets` / `ui` / `boot` — the Phase 01 coverage: damping and
   angle maths, deterministic terrain, settings/progress sanitisation, glTF validity and manifests,
@@ -614,8 +704,8 @@ stats, resource yield, scan samples, node one-shotting, equipment equip/upgrade/
 maths, IndexedDB round-trip, reset and corrupt-save repair. `progression-ui` — all five tabs,
 Learn/Upgrade/Equip/Unequip/Craft callbacks, close paths and HUD level/stamina readouts.
 `resource-nodes` — all 20 caches build grounded, nearest interaction, gather hiding and survey state.
-`locomotion` — Vault Step air jump and water-speed modifiers. The full suite is **182 tests across
-26 files**.
+`locomotion` — Vault Step air jump and water-speed modifiers. The full suite is **189 tests across
+28 files**.
 
 ### Phase 06 manual checklist
 
@@ -656,7 +746,8 @@ Learn/Upgrade/Equip/Unequip/Craft callbacks, close paths and HUD level/stamina r
   suit rather than a scanned actor. It is not skinned and has no baked clips: motion is procedural,
   with no IK, foot planting, ragdoll or facial animation yet.
 - Terrain detail is fixed per 300 m tile (no distance LOD within the basin); chunk streaming changes
-  prop density, not terrain tessellation.
+  prop density and vegetation, not terrain tessellation. Texture compression is not shipped: the
+  procedural textures use quality-scaled RGBA8 + mipmaps, not KTX2/Basis.
 - The river is a carved corridor, not a fluid simulation: flow is scrolling normal maps and the two
   falls are authored meshes, so there is no buoyancy, current push or swimming.
 - One authored chapter. Story content is finite; there is no procedural quest generator, combat,
@@ -670,8 +761,9 @@ Learn/Upgrade/Equip/Unequip/Craft callbacks, close paths and HUD level/stamina r
   metres of travel (shards are saved immediately).
 - No multiplayer, no cloud saves, no gamepad support; touch controls cover movement, look, run,
   jump, pulse, scan, journal, field record and pause.
-- Streamed chunks are built on the main thread as the player crosses a boundary, so the first pass
-  into a new region can hitch for a frame while props and colliders are created.
+- Streamed chunks are still built on the main thread, but the queue is time-sliced and ground cover
+  uses a cached height grid; the null-device benchmark is under 7 ms worst-case, while GPU upload
+  and shader compilation can still produce a first-visit hitch on slower hardware.
 - Chapter progress, settings, shard position and the field record are four separate local saves. Story NPCs and props
   are not streamed; all nineteen story objects and three characters stay resident for the session.
 - Creatures avoid solids and steep ground through local probing rather than pathfinding, so a very
@@ -681,4 +773,4 @@ Learn/Upgrade/Equip/Unequip/Craft callbacks, close paths and HUD level/stamina r
 
 ---
 
-*Echoes of the Lost World — Phase 06 · v0.6.0*
+*Echoes of the Lost World — Phase 07 · v0.7.0*

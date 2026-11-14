@@ -100,7 +100,7 @@ export class Terrain {
   private readonly farMaterial: StandardMaterial;
   readonly bounds = WORLD.terrainSize * 0.5;
 
-  constructor(app: AppBase, detailTexture: Texture) {
+  constructor(app: AppBase, detailTexture: Texture, normalTexture?: Texture) {
     const device = app.graphicsDevice;
     this.root = new Entity('terrain');
 
@@ -109,6 +109,11 @@ export class Terrain {
     this.material.diffuse = new Color(1, 1, 1, 1);
     this.material.diffuseMap = detailTexture;
     this.material.diffuseMapTiling = new Vec2(96, 96);
+    if (normalTexture) {
+      this.material.normalMap = normalTexture;
+      this.material.normalMapTiling = new Vec2(96, 96);
+      this.material.bumpiness = 0.38;
+    }
     this.material.useMetalness = true;
     this.material.metalness = 0.02;
     this.material.gloss = 0.18;

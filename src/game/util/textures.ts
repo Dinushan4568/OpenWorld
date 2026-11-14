@@ -101,9 +101,11 @@ export interface SkyResult {
 }
 
 /** Golden-hour sky in equirectangular projection, with drifting cloud bands. */
-export function generateSkyTexture(): SkyResult {
-  const width = 1024;
-  const height = 512;
+export function generateSkyTexture(finalSize = 2048): SkyResult {
+  // finalSize is the full equirectangular width budget; the canvas stores a
+  // 2:1 image, so quality scaling lowers both dimensions and upload memory.
+  const width = Math.max(256, Math.round(finalSize / 2));
+  const height = Math.max(128, Math.round(width / 2));
   const canvas = makeCanvas(width, height);
   const ctx = context2d(canvas);
   const image = ctx.createImageData(width, height);
@@ -218,7 +220,8 @@ export function generateSkyTexture(): SkyResult {
   ctx.putImageData(image, 0, 0);
 
   // Upscale for a smoother skybox gradient while keeping generation cost low.
-  const finalCanvas = makeCanvas(2048, 1024);
+  const targetWidth = Math.max(512, Math.round(finalSize));
+  const finalCanvas = makeCanvas(targetWidth, targetWidth / 2);
   const finalCtx = context2d(finalCanvas);
   finalCtx.imageSmoothingEnabled = true;
   finalCtx.imageSmoothingQuality = 'high';
@@ -229,7 +232,8 @@ export function generateSkyTexture(): SkyResult {
   const sunV = 0.5 - elevation / Math.PI;
   const cx = sunU * finalCanvas.width;
   const cy = sunV * finalCanvas.height;
-  const gradient = finalCtx.createRadialGradient(cx, cy, 0, cx, cy, 74);
+  const disc = Math.max(28, finalCanvas.width * 0.036);
+  const gradient = finalCtx.createRadialGradient(cx, cy, 0, cx, cy, disc);
   gradient.addColorStop(0, 'rgba(255, 251, 236, 1)');
   gradient.addColorStop(0.12, 'rgba(255, 246, 222, 0.95)');
   gradient.addColorStop(0.3, 'rgba(255, 224, 178, 0.42)');
@@ -238,7 +242,7 @@ export function generateSkyTexture(): SkyResult {
   finalCtx.globalCompositeOperation = 'screen';
   finalCtx.fillStyle = gradient;
   finalCtx.beginPath();
-  finalCtx.arc(cx, cy, 74, 0, Math.PI * 2);
+  finalCtx.arc(cx, cy, disc, 0, Math.PI * 2);
   finalCtx.fill();
   finalCtx.globalCompositeOperation = 'source-over';
 
@@ -299,6 +303,44 @@ export function generateDetailTexture(kind: DetailKind, size = 512): Canvas2D {
       data[i] = clamp(value * tintR, 0, 1) * 255;
       data[i + 1] = clamp(value * tintG, 0, 1) * 255;
       data[i + 2] = clamp(value * tintB, 0, 1) * 255;
+      data[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(image, 0, 0);
+  return canvas;
+}
+
+/**
+ * Tileable terrain normal map. The terrain's vertex colour carries the biome
+ * palette, while this map supplies the fine gravel/grass micro-light so the
+ * ground does not read as a flat vertex-coloured surface under grazing sun.
+ */
+export function generateTerrainNormalMap(size = 256): Canvas2D {
+  const canvas = makeCanvas(size, size);
+  const ctx = context2d(canvas);
+  const image = ctx.createImageData(size, size);
+  const data = image.data;
+  const period = 6;
+  const height = (u: number, v: number): number =>
+    fbmTile(u * period, v * period, period, 113, 4) * 0.7 +
+    fbmTile(u * period * 4, v * period * 4, period * 4, 117, 2) * 0.3;
+  const step = 1 / size;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const u = x / size;
+      const v = y / size;
+      const hL = height((u - step + 1) % 1, v);
+      const hR = height((u + step) % 1, v);
+      const hD = height(u, (v - step + 1) % 1);
+      const hU = height(u, (v + step) % 1);
+      const nx = (hL - hR) * 2.2;
+      const ny = (hD - hU) * 2.2;
+      const nz = 1;
+      const len = Math.hypot(nx, ny, nz);
+      const i = (y * size + x) * 4;
+      data[i] = ((nx / len) * 0.5 + 0.5) * 255;
+      data[i + 1] = ((ny / len) * 0.5 + 0.5) * 255;
+      data[i + 2] = ((nz / len) * 0.5 + 0.5) * 255;
       data[i + 3] = 255;
     }
   }
