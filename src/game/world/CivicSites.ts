@@ -155,11 +155,21 @@ export class CivicSites {
     this.primitive('cylinder', centre.x, y + 0.16, centre.z, [26, 0.32, 26], this.materials.stone, false);
     this.primitive('cylinder', centre.x, y + 0.4, centre.z, [18, 0.2, 18], this.materials.stone, false);
     if (this.collision) {
+      // Outer apron and raised inner dais, matching the two stone discs.
       this.collision.add({
         x: centre.x,
         z: centre.z,
         radius: 13,
         base: y - 0.2,
+        top: y + 0.34,
+        walkable: true,
+        kind: 'hero:city-apron',
+      });
+      this.collision.add({
+        x: centre.x,
+        z: centre.z,
+        radius: 9,
+        base: y + 0.24,
         top: y + 0.5,
         walkable: true,
         kind: 'hero:city-plaza',
@@ -206,7 +216,7 @@ export class CivicSites {
         z: centre.z,
         radius: 15,
         base: y - 0.2,
-        top: y + 0.3,
+        top: y + 0.24,
         walkable: true,
         kind: 'hero:reactor-deck',
       });
@@ -263,7 +273,7 @@ export class CivicSites {
     this.primitive('cylinder', x, y + 0.3, z, [7, 0.6, 7], this.materials.stone, true);
     this.primitive('torus', x, y + 0.7, z, [6.4, 0.09, 6.4], this.materials.glow, false);
     if (this.collision) {
-      this.collision.add({ x, z, radius: 6.5, base: y - 0.1, top: y + 0.6, walkable: true, kind: 'hero:grove-stone' });
+      this.collision.add({ x, z, radius: 3.5, base: y - 0.1, top: y + 0.6, walkable: true, kind: 'hero:grove-stone' });
       this.collision.add({ x, z, radius: 1.4, base: y + 0.6, top: y + 1.8, walkable: false, kind: 'hero:mother-tree' });
     }
     for (let i = 0; i < 10; i++) {
