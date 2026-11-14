@@ -20,7 +20,7 @@ const BLOCKS: ReadonlyArray<{ title: string; lines: string[]; note?: string }> =
   },
   {
     title: 'Environment',
-    lines: ['Procedural heightfield terrain', 'Original GLB props & ruins', 'Procedural sky, texture and atmosphere synthesis'],
+    lines: ['Procedural heightfield terrain', 'Original GLB props, ruins and the Wayfarer character', 'Procedural sky, textures, atmosphere and gait synthesis'],
     note: 'No third-party art, models, textures or scans are used.',
   },
   {
