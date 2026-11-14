@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_SETTINGS,
+  EMPTY_PROGRESS,
   ProgressStore,
   SettingsStore,
   sanitizeProgress,
@@ -85,5 +86,15 @@ describe('progress store', () => {
     reloaded.clear();
     expect(reloaded.hasProgress).toBe(false);
     expect(storage.getItem('echoes-of-the-lost-world:progress')).toBeNull();
+  });
+
+  it('recovers corrupt progress without mutating the shared empty fixture', () => {
+    const storage = new MemoryStorage();
+    storage.setItem('echoes-of-the-lost-world:progress', '{ definitely not json');
+    const progress = new ProgressStore(storage);
+    progress.addShard('recovered');
+    expect(progress.value.collected).toEqual(['recovered']);
+    expect(EMPTY_PROGRESS.collected).toEqual([]);
+    expect(new ProgressStore(storage).value.collected).toEqual(['recovered']);
   });
 });

@@ -84,6 +84,7 @@ export class ProgressionSystem extends Emitter<ProgressionEvents> {
   private readonly saveDelayMs: number;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private saving: Promise<boolean> | null = null;
+  private disposed = false;
   private queuedSave = false;
   private loadedOnce = false;
   private lastError: string | null = null;
@@ -327,9 +328,27 @@ export class ProgressionSystem extends Emitter<ProgressionEvents> {
   }
 
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
     if (this.saveTimer !== null) clearTimeout(this.saveTimer);
     this.saveTimer = null;
-    this.persistence.close?.();
+    // Let an in-flight IndexedDB transaction finish before closing the
+    // connection; closing immediately can abort the final save.
+    const close = (): void => this.persistence.close?.();
+    if (!this.saving) {
+      close();
+      return;
+    }
+    void (async () => {
+      while (this.saving) {
+        try {
+          await this.saving;
+        } catch {
+          // save() already reports its own failure; keep draining queued saves.
+        }
+      }
+      close();
+    })();
   }
 
   grantXp(base: number): ProgressionResult {

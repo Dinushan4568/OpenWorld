@@ -4085,6 +4085,8 @@ body.is-menu {
   }
 
   .character__card {
+    height: 96vh;
+    max-height: 96vh;
     height: 96svh;
     max-height: 96svh;
   }

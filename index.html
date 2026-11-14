@@ -9,7 +9,7 @@
       content="Echoes of the Lost World — an original cinematic open-world sci-fi expedition built with PlayCanvas, TypeScript and Vite."
     />
     <title>Echoes of the Lost World</title>
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <style>
       /* First-paint shell: visible before the module graph loads. */
       html,
@@ -56,6 +56,14 @@
     </style>
   </head>
   <body>
+    <noscript>
+      <div style="position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; padding: 28px; background: #050d10; color: #efe7da; font: 13px/1.7 system-ui, sans-serif">
+        <div style="max-width: 560px; border: 1px solid rgba(255, 138, 122, 0.35); padding: 28px; background: rgba(8, 14, 16, 0.96)">
+          <strong style="display: block; margin-bottom: 10px; letter-spacing: 0.16em; text-transform: uppercase; font-size: 10px; color: #ff9b8d">JavaScript required</strong>
+          <p style="margin: 0">Echoes of the Lost World is a WebGL 2 / WebGPU application and needs JavaScript enabled. Enable JavaScript and reload the page.</p>
+        </div>
+      </div>
+    </noscript>
     <div id="boot-shell" role="status" aria-live="polite">
       <div>
         <div class="ring"></div>
@@ -66,6 +74,39 @@
       <canvas id="game-canvas" aria-label="Echoes of the Lost World game viewport"></canvas>
       <div id="ui-root"></div>
     </div>
+    <script>
+      // If the module graph cannot be fetched or parsed, the player would
+      // otherwise stare at the spinner forever. This watchdog only handles
+      // that pre-module case; Game owns runtime boot failures.
+      (function () {
+        var failed = false;
+        function fail(detail) {
+          if (failed) return;
+          failed = true;
+          var shell = document.getElementById('boot-shell');
+          if (!shell) return;
+          shell.classList.remove('is-done');
+          shell.innerHTML =
+            '<div style="max-width:560px;text-align:center;letter-spacing:0;text-transform:none;font-size:13px;line-height:1.7">' +
+            '<div class="ring"></div>' +
+            '<strong style="display:block;margin-bottom:8px;letter-spacing:.16em;text-transform:uppercase;font-size:10px;color:#ffb26b">Expedition could not load</strong>' +
+            '<p style="margin:0 0 16px">The application files did not finish loading. Check your connection, disable blockers for this site, then reload.</p>' +
+            '<pre style="text-align:left;white-space:pre-wrap;word-break:break-word;color:#ff9b8d;font:10px/1.6 monospace;background:#080e10;border:1px solid rgba(255,138,122,.2);padding:10px;max-height:120px;overflow:auto">' +
+            String(detail).replace(/[&<>]/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]; }) +
+            '</pre>' +
+            '<button type="button" onclick="window.location.reload()" style="margin-top:14px;padding:10px 18px;border:1px solid rgba(255,178,107,.5);background:transparent;color:#efe7da;cursor:pointer">Reload</button>' +
+            '</div>';
+          shell.style.opacity = '1';
+        }
+        window.__echoesReportBootFailure = fail;
+        window.addEventListener('error', function (event) {
+          if (!window.__echoesModuleLoaded) fail(event.message || 'A required script failed to load.');
+        }, true);
+        window.setTimeout(function () {
+          if (!window.__echoesModuleLoaded) fail('Application module did not load within 15 seconds.');
+        }, 15000);
+      })();
+    </script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

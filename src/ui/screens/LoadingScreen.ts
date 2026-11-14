@@ -20,9 +20,11 @@ export class LoadingScreen extends Screen {
   private readonly tip: HTMLElement;
   private readonly tipIndex: { value: number };
   private tipTimer: number | null = null;
+  private tipTimeout: number | null = null;
   private progress = 0;
   private targetProgress = 0;
   private completed = false;
+  private disposed = false;
 
   constructor() {
     super('screen-loading');
@@ -80,8 +82,6 @@ export class LoadingScreen extends Screen {
     ]);
     this.root.append(top, center, bottom);
     this.engine.textContent = 'Preparing renderer';
-    this.showTip();
-    this.tipTimer = window.setInterval(() => this.showTip(), 5200);
   }
 
   override show(): void {
@@ -92,10 +92,14 @@ export class LoadingScreen extends Screen {
     this.targetProgress = 0;
     this.bar.style.width = '0%';
     this.percent.textContent = '0%';
+    this.startTipTimer();
+    this.showTip();
     this.startAnimation();
   }
 
   override hide(): void {
+    this.completed = true;
+    this.stopTipTimer();
     this.root.classList.add('is-hidden');
     this.active = false;
     this.root.setAttribute('aria-hidden', 'true');
@@ -110,10 +114,30 @@ export class LoadingScreen extends Screen {
     this.engine.textContent = text;
   }
 
+  private startTipTimer(): void {
+    if (this.tipTimer !== null || this.disposed) return;
+    this.tipTimer = window.setInterval(() => this.showTip(), 5200);
+  }
+
+  private stopTipTimer(): void {
+    if (this.tipTimer !== null) {
+      window.clearInterval(this.tipTimer);
+      this.tipTimer = null;
+    }
+    if (this.tipTimeout !== null) {
+      window.clearTimeout(this.tipTimeout);
+      this.tipTimeout = null;
+    }
+  }
+
   private showTip(): void {
+    if (this.disposed) return;
     const p = this.tip.querySelector('p');
     this.tip.classList.remove('is-visible');
-    window.setTimeout(() => {
+    if (this.tipTimeout !== null) window.clearTimeout(this.tipTimeout);
+    this.tipTimeout = window.setTimeout(() => {
+      this.tipTimeout = null;
+      if (this.disposed) return;
       if (p) p.textContent = TIPS[this.tipIndex.value % TIPS.length];
       this.tipIndex.value += 1;
       this.tip.classList.add('is-visible');
@@ -122,7 +146,7 @@ export class LoadingScreen extends Screen {
 
   private startAnimation(): void {
     const tick = (): void => {
-      if (this.completed) return;
+      if (this.completed || this.disposed) return;
       this.progress += (this.targetProgress - this.progress) * 0.12;
       if (this.targetProgress - this.progress < 0.002) this.progress = this.targetProgress;
       const pct = Math.round(this.progress * 100);
@@ -135,6 +159,7 @@ export class LoadingScreen extends Screen {
 
   async complete(): Promise<void> {
     this.completed = true;
+    this.stopTipTimer();
     this.bar.style.width = '100%';
     this.percent.textContent = '100%';
     this.status.textContent = 'Expedition ready';
@@ -142,10 +167,14 @@ export class LoadingScreen extends Screen {
     this.root.classList.add('is-hidden');
     this.active = false;
     this.root.setAttribute('aria-hidden', 'true');
-    if (this.tipTimer !== null) {
-      window.clearInterval(this.tipTimer);
-      this.tipTimer = null;
-    }
     await new Promise((resolve) => window.setTimeout(resolve, 800));
+  }
+
+  /** Stops every timer and animation frame owned by the loading surface. */
+  dispose(): void {
+    this.disposed = true;
+    this.completed = true;
+    this.stopTipTimer();
+    this.root.remove();
   }
 }
